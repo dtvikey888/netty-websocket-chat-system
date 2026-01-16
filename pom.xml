@@ -11,6 +11,7 @@
   <url>http://maven.apache.org</url>
     <modules>
         <module>netty-websocket-chat-common</module>
+        <module>netty-websocket-chat-pojo</module>
     </modules>
 
     <properties>
