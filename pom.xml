@@ -121,24 +121,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-quartz</artifactId>
         </dependency>
-        <!--MySQL驱动-->
-        <dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
-            <version>5.1.44</version>
-        </dependency>
-        <!--MyBatis-->
-        <dependency>
-            <groupId>org.mybatis.spring.boot</groupId>
-            <artifactId>mybatis-spring-boot-starter</artifactId>
-            <version>2.1.1</version>
-        </dependency>
-        <!--通用 mapper 逆向工具-->
-        <dependency>
-            <groupId>tk.mybatis</groupId>
-            <artifactId>mapper-spring-boot-starter</artifactId>
-            <version>2.1.5</version>
-        </dependency>
+        
         <!--pagehelper -->
         <dependency>
             <groupId>com.github.pagehelper</groupId>
@@ -232,11 +215,7 @@
             <version>1.2.83</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.mariadb.jdbc</groupId>
-            <artifactId>mariadb-java-client</artifactId>
-            <version>3.5.3</version>
-        </dependency>
+
 
         <dependency>
             <groupId>commons-codec</groupId>

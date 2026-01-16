@@ -5,6 +5,7 @@ import com.yqrb.dto.ChatMessageDTO;
 import com.yqrb.enums.MessageTypeEnum;
 import com.yqrb.enums.UserTypeEnum;
 import com.yqrb.utils.WebSocketMemoryManager;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -20,6 +21,7 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
+@ChannelHandler.Sharable // 关键：标记该处理器线程安全，可被多个 Channel 复用（解决重复添加错误）
 public class CustomWebSocketBusinessHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     @Autowired
     private WebSocketMemoryManager webSocketMemoryManager;
