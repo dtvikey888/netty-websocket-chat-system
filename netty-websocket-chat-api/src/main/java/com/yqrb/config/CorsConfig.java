@@ -56,7 +56,7 @@ public class CorsConfig {
         // 允许携带Cookie（跨域请求需同步Cookie时启用）
         corsConfiguration.setAllowCredentials(true);//这两句不加不能跨域上传文件
         // 预检请求缓存时间（3600秒），减少重复预检请求
-        corsConfiguration.setMaxAge(3600l);//加上去就可以了
+        corsConfiguration.setMaxAge(3600L);//加上去就可以了
         return corsConfiguration;
     }
 
