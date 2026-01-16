@@ -12,6 +12,9 @@
     <modules>
         <module>netty-websocket-chat-common</module>
         <module>netty-websocket-chat-pojo</module>
+        <module>netty-websocket-chat-mapper</module>
+        <module>netty-websocket-chat-service</module>
+        <module>netty-websocket-chat-api</module>
     </modules>
 
     <properties>
