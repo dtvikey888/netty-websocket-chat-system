@@ -1,0 +1,30 @@
+server:
+  port: 8088
+
+#swagger.enable: true
+spring:
+  cache:
+    type:
+      redis
+  datasource:                                   # 数据源的相关配置
+    url: jdbc:mariadb://127.0.0.1:3306/yqrbapp253?allowMultiQueries=true&useUnicode=true&characterEncoding=UTF-8&autoReconnect&useSSL=false
+    password: fjw986321
+  redis:
+    database: 0
+    host: 127.0.0.1
+    port: 6379
+    password: fjw3989099
+    jedis:
+      pool:
+        max-active: 8
+        max-wait: -1ms
+        max-idle: 500
+        min-idle: 0
+        testOnBorrow: true
+        testOnReturn: true
+        testWhileIdle: true
+    lettuce:
+      shutdown-timeout: 0ms
+mybatis:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

@@ -1,0 +1,68 @@
+####################################################
+#
+# Web访问端口号 约定：8088
+#
+####################################################
+server:
+  #  port: 8088
+  tomcat:
+    uri-encoding: UTF-8
+  max-http-header-size: 80KB
+
+####################################################
+#
+# 配置数据源信息
+#
+####################################################
+spring:
+  #附件上传文件大小限制
+  servlet:
+    multipart:
+      max-file-size: 10240MB  #单个文件大小限制
+      max-request-size: 10240MB #总文件大小限制（允许存储文件的文件夹大小）
+  jmx:
+    default-domain: article-spread-score
+  profiles:
+    active: dev
+  datasource:                                   # 数据源的相关配置
+    type: com.zaxxer.hikari.HikariDataSource    # 数据源类型，HikariCP
+    #    driver-class-name: com.mysql.jdbc.Driver   # mysql 驱动
+    driver-class-name: org.mariadb.jdbc.Driver   # mariadb 驱动
+    #    url: jdbc:mariadb://localhost:3306/yqrbapp?useUnicode=true&characterEncoding=UTF-8&autoReconnect&useSSL=false
+    #    username: yqrbapp253
+    username: root
+  #    password: fandir
+  hikari:
+    connection-timeout: 30000     # 等待连接池分配连接的最大时长（毫秒），超过时长还无连接则发生 SQLException，默认：30秒
+    minimum-idle: 10              # 最小连接数 CPU4核10个就够
+    maximum-pool-size: 10         # 最大连接数  CPU4核10个就够
+    auto-commit: true             # 自动提交
+    idle-timeout: 600000          # 连接超时的最大时长（毫秒），超时则被释放（retired），默认：10分钟
+    pool-name: DataSourceHikariCP # 连接池名称
+    max-lifetime: 1800000         # 连接的生命时长（毫秒）超时而没有被使用则释放（retired），默认：30分钟
+    connection-test-query: SELECT 1
+
+####################################################
+#
+# MyBatis 配置
+#
+####################################################
+mybatis:
+  type-aliases-package: com.yqrb.pojo    # 所有 POJO 类所在包路径
+  mapper-locations: classpath:mapper/*.xml  # mapper映射文件
+#  configuration:
+#    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+####################################################
+#
+# MyBatis mapper配置
+#
+####################################################
+mapper:
+  mappers: com.yqrb.my.mapper.MyMapper
+  not-empty: false # 在进行数据库操作时，判断表达式username != null,是否追加 username! = ""
+  identity: MYSQL
+# 分页插件配置
+pagehelper:
+  #helperDialect: mysql
+  helperDialect: mariadb
+  supportMethodsArguments: true
