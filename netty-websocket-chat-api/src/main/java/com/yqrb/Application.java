@@ -21,6 +21,6 @@ public class Application {
     public static void main(String[] args) {
         SpringApplication.run(Application.class, args);
         log.info("SpringBoot + Netty WebSocket 后端启动成功（纯内存版，无数据库）");
-        log.info("HTTP 接口端口：8080，WebSocket 端口：8081");
+        log.info("HTTP 接口端口：8088，WebSocket 端口：8081");
     }
 }
