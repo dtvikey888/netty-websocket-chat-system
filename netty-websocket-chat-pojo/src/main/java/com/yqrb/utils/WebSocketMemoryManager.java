@@ -12,6 +12,7 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.PostConstruct;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -42,12 +43,17 @@ public class WebSocketMemoryManager {
     /** 登报申请列表（申请ID -> 申请信息） */
     private final Map<String, ApplicationInfo> APPLICATION_MAP = new ConcurrentHashMap<>();
 
-    // ==================== 初始化模拟数据（服务启动后自动生成，用于联调） ====================
-    static {
-        // 模拟2条待审核登报申请（纯内存，服务启动即存在）
-        WebSocketMemoryManager manager = new WebSocketMemoryManager();
-        manager.createMockApplication("user001", "张三", "13800138000", "营业执照遗失登报");
-        manager.createMockApplication("user002", "李四", "13900139000", "公章遗失登报");
+    // ==================== 初始化模拟数据（Spring 单例 Bean 创建后自动执行，用于联调） ====================
+    /**
+     * 替换 static 代码块，使用 @PostConstruct 注解，Spring 单例 Bean 初始化后执行
+     * 模拟数据存入 Spring 单例的 APPLICATION_MAP，业务接口可查询到
+     */
+    @PostConstruct
+    public void initMockApplications() {
+        // 直接调用当前实例的方法，数据存入当前实例（Spring 单例）的 APPLICATION_MAP
+        createMockApplication("user001", "张三", "13800138000", "营业执照遗失登报");
+        createMockApplication("user002", "李四", "13900139000", "公章遗失登报");
+        log.info("纯内存模拟数据初始化完成，共添加 {} 条待审核登报申请", APPLICATION_MAP.size());
     }
 
     /**
