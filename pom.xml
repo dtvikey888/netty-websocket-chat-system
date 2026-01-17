@@ -6,6 +6,7 @@
   <artifactId>netty-websocket-chat-system</artifactId>
   <version>1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
+  <description>线上登报办理系统（WAR+阿里云文件存储+receiverId闭环）</description>
 
     <parent>
         <groupId>org.springframework.boot</groupId>
