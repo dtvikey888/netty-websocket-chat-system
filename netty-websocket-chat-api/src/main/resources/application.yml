@@ -1,88 +1,94 @@
-# 服务器配置（WAR包部署时，端口由阿里云Tomcat指定，本地仅用于测试）
+####################################################
+#
+# Web访问端口号 约定：8088
+#
+####################################################
 server:
-  port: 8088
-  servlet:
-    context-path: /newspaper-api
-    multipart:
-      max-file-size: 15MB # 单个图片最大15MB
-      max-request-size: 30MB # 单次请求最大30MB
+  #  port: 8088
+  tomcat:
+    uri-encoding: UTF-8
+  max-http-header-size: 80KB
 
-# Spring 核心配置
+####################################################
+#
+# 配置数据源信息
+#
+####################################################
 spring:
-  # 数据库配置（阿里云服务器MariaDB，需修改为实际地址/用户名/密码）
-  datasource:
-    url: jdbc:mariadb://localhost:3306/newspaper_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowMultiQueries=true&useSSL=false
-    username: root # 阿里云数据库用户名
-    password: 123456 # 阿里云数据库密码
-    driver-class-name: org.mariadb.jdbc.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 30000
-      idle-timeout: 600000
+  #附件上传文件大小限制
+  servlet:
+    multipart:
+      max-file-size: 10240MB  #单个文件大小限制
+      max-request-size: 10240MB #总文件大小限制（允许存储文件的文件夹大小）
+  jmx:
+    default-domain: flutter-yqvod-dev
+  profiles:
+    active: dev
+  datasource:                                   # 数据源的相关配置
+    type: com.zaxxer.hikari.HikariDataSource    # 数据源类型，HikariCP
+    #    driver-class-name: com.mysql.jdbc.Driver   # mysql 驱动
+    driver-class-name: org.mariadb.jdbc.Driver   # mariadb 驱动
+    #    url: jdbc:mariadb://localhost:3306/yqrbapp?useUnicode=true&characterEncoding=UTF-8&autoReconnect&useSSL=false
+    #    username: yqrbapp253
+    username: root
+  #    password: fandir
+  hikari:
+    connection-timeout: 30000     # 等待连接池分配连接的最大时长（毫秒），超过时长还无连接则发生 SQLException，默认：30秒
+    minimum-idle: 10              # 最小连接数 CPU4核10个就够
+    maximum-pool-size: 10         # 最大连接数  CPU4核10个就够
+    auto-commit: true             # 自动提交
+    idle-timeout: 600000          # 连接超时的最大时长（毫秒），超时则被释放（retired），默认：10分钟
+    pool-name: DataSourceHikariCP # 连接池名称
+    max-lifetime: 1800000         # 连接的生命时长（毫秒）超时而没有被使用则释放（retired），默认：30分钟
+    connection-test-query: SELECT 1
 
-  # Redis配置（阿里云服务器Redis，需开放6379端口）
-  redis:
-    host: localhost
-    port: 6379
-    password: # 阿里云Redis密码（无密码则留空）
-    database: 0
-    timeout: 3000
-    jedis:
-      pool:
-        max-active: 10
-        max-idle: 5
-        min-idle: 2
-
+####################################################
+#
 # MyBatis 配置
+#
+####################################################
 mybatis:
-  mapper-locations: classpath:mapper/*.xml
-  type-aliases-package: com.yqbtv.newspaper.entity
-  configuration:
-    map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-    default-fetch-size: 100
-    default-statement-timeout: 30
+  type-aliases-package: com.imooc.pojo    # 所有 POJO 类所在包路径
+  mapper-locations: classpath:mapper/*.xml  # mapper映射文件
+#  configuration:
+#    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+####################################################
+#
+# MyBatis mapper配置
+#
+####################################################
+mapper:
+  mappers: com.yqrb.my.mapper.MyMapper
+  not-empty: false # 在进行数据库操作时，判断表达式username != null,是否追加 username! = ""
+  identity: MYSQL
+# 分页插件配置
+pagehelper:
+  #helperDialect: mysql
+  helperDialect: mariadb
+  supportMethodsArguments: true
 
-# 自定义配置（核心：阿里云文件路径+Netty+receiverId）
-custom:
-  # Netty WebSocket 配置（独立端口8081，阿里云需开放该端口）
-  netty:
-    websocket:
-      port: 8081
-      boss-thread-count: 1
-      worker-thread-count: 16
-      max-frame-length: 1048576
-      idle-timeout: 600
-
-  # 文件上传配置（核心：阿里云服务器指定路径 /mnt/fjw/vsftpd/images/）
-  file:
-    upload:
-      base-path: /mnt/fjw/vsftpd/images/ # 阿里云图片存储根目录（关键修改，绝对路径）
-      temp-path: /mnt/fjw/vsftpd/images/temp/ # 阿里云临时文件目录（自动创建）
-      allowed-image-types: jpg,png,jpeg,bmp,gif # 允许上传的图片格式
-      compress:
-        enable: true # 开启图片压缩
-        width: 1200 # 压缩后最大宽度（高度等比例缩放）
-        quality: 0.8 # 压缩质量（0.1-1.0，0.8兼顾清晰度和大小）
-        suffix: _compress # 压缩文件后缀（如 test_compress.jpg）
-
-  # receiverId 会话配置（闭环流转支撑，无修改）
-  session:
-    expire-seconds: 86400 # 24小时过期
-    id-generate: prefix
-    user-prefix: user_
-    cs-prefix: cs_
-    system-prefix: system_
-    session-key-prefix: session:
-    offline-msg-key-prefix: offline_msg:
-    cs-online-key-prefix: cs_online:
-
-# 日志配置（阿里云服务器日志输出路径，便于排查问题）
-logging:
-  level:
-    com.yqbtv.newspaper: INFO
-    org.springframework: WARN
-    io.netty: WARN
-  file:
-    name: /mnt/fjw/vsftpd/images/logs/newspaper.log # 阿里云日志存储路径（自动创建）
+  # 自定义配置
+  custom:
+    file:
+      upload:
+        base-path: /mnt/fjw/vsftpd/images/
+        temp-path: /mnt/fjw/vsftpd/images/temp/
+        allowed-image-types: jpg,png,jpeg,bmp,gif
+        compress:
+          enable: true
+          width: 1200
+          quality: 0.8
+          suffix: _compress
+    netty:
+      websocket:
+        port: 8081
+        boss-thread-count: 1
+        worker-thread-count: 16
+        idle-timeout: 600
+    receiver:
+      session:
+        expire-seconds: 86400
+        prefix:
+          session:receiver:
+        offline-msg-prefix:
+          offline:msg:

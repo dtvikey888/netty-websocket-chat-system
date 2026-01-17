@@ -1,0 +1,39 @@
+# Dev环境服务器配置
+server:
+  port: 8088  # 本地/dev环境访问端口
+
+# Dev环境Spring配置
+spring:
+  # 缓存配置（修正语法错误，直接指定Redis缓存类型）
+  cache:
+    type: redis
+  # 数据源配置（覆盖主配置，Dev环境专属数据库信息）
+  datasource:
+    url: jdbc:mariadb://127.0.0.1:3306/newspaper_db?allowMultiQueries=true&useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&useSSL=false
+    password: fjw986321  # 数据库密码（Dev环境专属）
+  # Redis配置（修正冲突，保留Jedis，注释Lettuce，调整格式）
+  redis:
+    database: 0  # 操作Redis的第0个数据库
+    host: 127.0.0.1  # Redis服务地址
+    port: 6379  # Redis服务端口
+    password: fjw3989099  # Redis密码（Dev环境专属）
+    timeout: 3000  # 连接Redis超时时间（毫秒）
+    jedis:
+      pool:
+        max-active: 8  # 连接池最大活跃连接数
+        max-wait: -1ms  # 连接池最大阻塞等待时间（-1表示无限制）
+        max-idle: 500  # 连接池最大空闲连接数
+        min-idle: 0  # 连接池最小空闲连接数
+    # 注释Lettuce配置，避免与Jedis冲突（Spring Boot默认Lettuce，此处指定使用Jedis）
+#    lettuce:
+#      shutdown-timeout: 0ms
+
+# Dev环境MyBatis配置（覆盖主配置，开启SQL日志输出）
+mybatis:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl  # 控制台输出SQL语句（Dev环境调试用）
+    map-underscore-to-camel-case: true  # 开启下划线命名→驼峰命名自动转换（补充，提升开发效率）
+
+# Swagger配置（修正格式，Dev环境开启Swagger）
+swagger:
+  enable: true

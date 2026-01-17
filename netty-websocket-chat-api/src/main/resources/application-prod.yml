@@ -1,0 +1,7 @@
+server:
+  port: 80
+
+spring:
+  datasource:                                   # 数据源的相关配置
+    url: jdbc:mariadb://127.0.0.1:3306/yqrbapp253?allowMultiQueries=true&useUnicode=true&characterEncoding=UTF-8&autoReconnect&useSSL=false
+    password: fjw986321
