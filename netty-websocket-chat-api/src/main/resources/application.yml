@@ -38,7 +38,7 @@ spring:
     maximum-pool-size: 10         # 最大连接数  CPU4核10个就够
     auto-commit: true             # 自动提交
     idle-timeout: 600000          # 连接超时的最大时长（毫秒），超时则被释放（retired），默认：10分钟
-    pool-name: DataSourceHikariCP # 连接池名称
+    pool-name: NewspaperHikariCP # 连接池名称
     max-lifetime: 1800000         # 连接的生命时长（毫秒）超时而没有被使用则释放（retired），默认：30分钟
     connection-test-query: SELECT 1
 
@@ -67,28 +67,28 @@ pagehelper:
   helperDialect: mariadb
   supportMethodsArguments: true
 
-  # 自定义配置
-  custom:
-    file:
-      upload:
-        base-path: /mnt/fjw/vsftpd/images/
-        temp-path: /mnt/fjw/vsftpd/images/temp/
-        allowed-image-types: jpg,png,jpeg,bmp,gif
-        compress:
-          enable: true
-          width: 1200
-          quality: 0.8
-          suffix: _compress
-    netty:
-      websocket:
-        port: 8081
-        boss-thread-count: 1
-        worker-thread-count: 16
-        idle-timeout: 600
-    receiver:
-      session:
-        expire-seconds: 86400
-        prefix:
-          session:receiver:
-        offline-msg-prefix:
-          offline:msg:
+# 自定义配置（仅保留压缩图片相关，强制开启压缩）
+custom:
+  file:
+    upload:
+      base-path: /mnt/fjw/vsftpd/images/
+      temp-path: /mnt/fjw/vsftpd/images/temp/
+      allowed-image-types: jpg,png,jpeg,bmp,gif
+      compress:
+        # 强制开启压缩，不允许关闭（适配仅保存压缩图片需求）
+        width: 1200
+        quality: 0.8
+        suffix: _compress
+  netty:
+    websocket:
+      port: 8081
+      boss-thread-count: 1
+      worker-thread-count: 16
+      idle-timeout: 600
+  receiver:
+    session:
+      expire-seconds: 86400
+      prefix:
+      session:receiver:
+      offline-msg-prefix:
+      offline:msg:
