@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace必须对应Mapper接口的全类名 -->
+<mapper namespace="com.yqrb.mapper.SessionMappingMapperCustom">
+
+    <!-- 补全：按sessionId删除会话映射 -->
+    <delete id="deleteBySessionId">
+        DELETE FROM session_mapping WHERE session_id = #{sessionId}
+    </delete>
+
+</mapper>

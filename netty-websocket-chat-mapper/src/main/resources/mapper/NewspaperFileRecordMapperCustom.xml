@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.yqrb.mapper.NewspaperFileRecordMapper">
+<mapper namespace="com.yqrb.mapper.NewspaperFileRecordMapperCustom">
 
     <!-- 结果集映射（适配仅压缩图片字段） -->
     <resultMap id="FileRecordResultMap" type="com.yqrb.pojo.vo.NewspaperFileRecordVO">
