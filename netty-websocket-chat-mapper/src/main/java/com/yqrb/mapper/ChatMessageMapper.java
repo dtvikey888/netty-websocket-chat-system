@@ -1,7 +1,7 @@
 package com.yqrb.mapper;
 
-import com.imooc.my.mapper.MyMapper;
-import com.imooc.pojo.ChatMessage;
+import com.yqrb.my.mapper.MyMapper;
+import com.yqrb.pojo.ChatMessage;
 
 public interface ChatMessageMapper extends MyMapper<ChatMessage> {
 }

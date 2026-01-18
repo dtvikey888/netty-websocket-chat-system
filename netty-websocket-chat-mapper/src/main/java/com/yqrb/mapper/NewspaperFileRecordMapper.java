@@ -1,7 +1,7 @@
 package com.yqrb.mapper;
 
-import com.imooc.my.mapper.MyMapper;
-import com.imooc.pojo.NewspaperFileRecord;
+import com.yqrb.my.mapper.MyMapper;
+import com.yqrb.pojo.NewspaperFileRecord;
 
 public interface NewspaperFileRecordMapper extends MyMapper<NewspaperFileRecord> {
 }
