@@ -21,7 +21,7 @@ public interface CustomerServiceMapperCustom {
     @Select("SELECT * FROM customer_service ORDER BY create_time ASC")
     List<CustomerServiceVO> selectAllCustomer();
 
-    // 新增客服（管理员接口）
+    // 新增客服（管理员接口，接收VO参数，映射数据库表）
     int insertCustomerService(CustomerServiceVO customerService);
 
     // 更新客服状态和最后登录时间（XML实现复杂SQL）

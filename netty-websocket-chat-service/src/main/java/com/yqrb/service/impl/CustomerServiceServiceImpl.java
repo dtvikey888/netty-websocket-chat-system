@@ -8,6 +8,7 @@ import com.yqrb.service.ReceiverIdService;
 import com.yqrb.util.DateUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -20,6 +21,39 @@ public class CustomerServiceServiceImpl implements CustomerServiceService {
 
     @Resource
     private ReceiverIdService receiverIdService;
+
+    // 新增客服（管理员接口，实现业务逻辑）
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> addCustomerService(CustomerServiceVO customerServiceVO, String receiverId) {
+        // 1. 校验ReceiverId有效性（仅管理员有效，此处复用现有校验逻辑）
+        if (!receiverIdService.validateReceiverId(receiverId)) {
+            return Result.unauthorized("ReceiverId无效或已过期，无新增客服权限");
+        }
+
+        // 2. 校验VO参数完整性
+        if (!StringUtils.hasText(customerServiceVO.getServiceStaffId()) || !StringUtils.hasText(customerServiceVO.getServiceName())) {
+            return Result.paramError("客服唯一标识（serviceStaffId）和客服姓名（serviceName）不能为空");
+        }
+
+        // 3. 校验客服是否已存在（避免重复新增）
+        CustomerServiceVO existingCustomer = customerServiceMapperCustom.selectByServiceStaffId(customerServiceVO.getServiceStaffId());
+        if (existingCustomer != null) {
+            return Result.error("该客服已存在，请勿重复新增（serviceStaffId：" + customerServiceVO.getServiceStaffId() + "）");
+        }
+
+        // 4. 调用Mapper执行新增操作
+        int insertResult = customerServiceMapperCustom.insertCustomerService(customerServiceVO);
+        if (insertResult <= 0) {
+            return Result.error("新增客服失败，请重试");
+        }
+
+        // 5. 刷新ReceiverId过期时间
+        receiverIdService.refreshReceiverIdExpire(receiverId);
+
+        // 6. 返回成功结果
+        return Result.success(true);
+    }
 
     @Override
     public Result<CustomerServiceVO> getCustomerByStaffId(String serviceStaffId, String receiverId) {

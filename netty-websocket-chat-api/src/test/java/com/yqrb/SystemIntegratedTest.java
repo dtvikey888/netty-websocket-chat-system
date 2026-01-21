@@ -1,9 +1,10 @@
 package com.yqrb;
 
-import com.yqrb.pojo.NewspaperApplication;
+import com.yqrb.pojo.vo.CustomerServiceVO;
 import com.yqrb.pojo.vo.NewspaperApplicationVO;
 import com.yqrb.pojo.vo.ReceiverIdSessionVO;
 import com.yqrb.pojo.vo.Result;
+import com.yqrb.service.CustomerServiceService;
 import com.yqrb.service.NewspaperApplicationService;
 import com.yqrb.service.ReceiverIdService;
 import org.junit.Test;
@@ -27,6 +28,24 @@ public class SystemIntegratedTest {
 
     @Autowired
     private NewspaperApplicationService newspaperApplicationService;
+
+    @Autowired
+    private CustomerServiceService customerServiceService;
+
+    // 新增测试：新增客服
+    @Test
+    public void testAddCustomerService() {
+        // 1. 生成管理员ReceiverId
+        String adminReceiverId = receiverIdService.generateReceiverId("admin_001", "系统管理员").getReceiverId();
+        // 2. 构建测试VO
+        CustomerServiceVO testVO = new CustomerServiceVO("cs_003", "客服小王", "13700137000");
+        // 3. 调用新增接口
+        Result<Boolean> result = customerServiceService.addCustomerService(testVO, adminReceiverId);
+        // 4. 断言结果
+        assert result.getCode() == 200;
+        assert result.getData() == true;
+        System.out.println("新增客服测试通过");
+    }
 
     /**
      * 测试：生成ReceiverId + 提交登报申请 完整流程

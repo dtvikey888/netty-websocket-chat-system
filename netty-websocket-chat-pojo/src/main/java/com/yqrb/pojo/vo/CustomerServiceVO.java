@@ -22,4 +22,13 @@ public class CustomerServiceVO {
     // 客服状态枚举
     public static final String STATUS_ONLINE = "ONLINE"; // 在线
     public static final String STATUS_OFFLINE = "OFFLINE"; // 离线
+
+    // 自定义构造方法：仅初始化3个核心字段
+    public CustomerServiceVO(String serviceStaffId, String serviceName, String servicePhone) {
+        this.serviceStaffId = serviceStaffId;
+        this.serviceName = serviceName;
+        this.servicePhone = servicePhone;
+        // 可选：给状态设置默认值（比如离线）
+        this.status = STATUS_OFFLINE;
+    }
 }

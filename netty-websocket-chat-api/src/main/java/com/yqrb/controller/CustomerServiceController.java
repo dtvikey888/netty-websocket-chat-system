@@ -19,6 +19,16 @@ public class CustomerServiceController {
     @Resource
     private CustomerServiceService customerServiceService;
 
+    // 新增：新增客服（管理员接口）
+    @PostMapping("/add")
+    @ApiOperation("新增客服（管理员专属）")
+    public Result<Boolean> addCustomerService(
+            @RequestBody CustomerServiceVO customerServiceVO,
+            @RequestHeader("ReceiverId") String receiverId
+    ) {
+        return customerServiceService.addCustomerService(customerServiceVO, receiverId);
+    }
+
     @GetMapping("/detail/{serviceStaffId}")
     @ApiOperation("查询客服详情")
     public Result<CustomerServiceVO> getCustomerDetail(
