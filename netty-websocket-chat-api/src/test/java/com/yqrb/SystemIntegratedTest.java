@@ -4,6 +4,7 @@ import com.yqrb.pojo.vo.CustomerServiceVO;
 import com.yqrb.pojo.vo.NewspaperApplicationVO;
 import com.yqrb.pojo.vo.ReceiverIdSessionVO;
 import com.yqrb.pojo.vo.Result;
+import com.yqrb.service.ChatMessageService;
 import com.yqrb.service.CustomerServiceService;
 import com.yqrb.service.NewspaperApplicationService;
 import com.yqrb.service.ReceiverIdService;
@@ -32,6 +33,9 @@ public class SystemIntegratedTest {
     @Autowired
     private CustomerServiceService customerServiceService;
 
+    @Autowired
+    private ChatMessageService chatMessageService;
+
     // 新增测试：新增客服
     @Test
     public void testAddCustomerService() {
@@ -45,6 +49,21 @@ public class SystemIntegratedTest {
         assert result.getCode() == 200;
         assert result.getData() == true;
         System.out.println("新增客服测试通过");
+    }
+
+    // 测试：删除会话所有消息
+    @Test
+    public void testDeleteMessageBySessionId() {
+        // 1. 生成测试ReceiverId
+        String receiverId = receiverIdService.generateReceiverId("user_001", "测试用户").getReceiverId();
+        // 2. 测试sessionId（可使用已存在的会话ID）
+        String testSessionId = "SESSION_xxxxxxxxxxxx";
+        // 3. 调用删除接口
+        Result<Boolean> result = chatMessageService.deleteMessageBySessionId(testSessionId, receiverId);
+        // 4. 断言结果
+        assert result.getCode() == 200;
+        assert result.getData() == true;
+        System.out.println("删除会话消息测试通过");
     }
 
     /**
