@@ -53,4 +53,14 @@ public class ChatMessageController {
     ) {
         return chatMessageService.markMsgAsRead(msgId, receiverId);
     }
+
+    // 新增：按sessionId删除会话所有消息
+    @DeleteMapping("/delete/session/{sessionId}")
+    @ApiOperation("删除会话所有消息（按sessionId）")
+    public Result<Boolean> deleteMessageBySessionId(
+            @PathVariable String sessionId,
+            @RequestHeader("ReceiverId") String receiverId
+    ) {
+        return chatMessageService.deleteMessageBySessionId(sessionId, receiverId);
+    }
 }

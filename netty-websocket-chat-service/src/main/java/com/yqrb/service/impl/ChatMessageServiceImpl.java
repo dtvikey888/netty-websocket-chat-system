@@ -1,6 +1,7 @@
 package com.yqrb.service.impl;
 
 import com.yqrb.mapper.ChatMessageMapperCustom;
+import com.yqrb.pojo.ChatMessage;
 import com.yqrb.pojo.vo.ChatMessageVO;
 import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
@@ -10,6 +11,7 @@ import com.yqrb.util.DateUtil;
 import com.yqrb.util.UUIDUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -111,6 +113,39 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         // 3. 刷新ReceiverId过期时间
         receiverIdService.refreshReceiverIdExpire(receiverId);
 
+        return Result.success(true);
+    }
+
+    // 新增：按sessionId删除会话所有消息
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> deleteMessageBySessionId(String sessionId, String receiverId) {
+        // 1. 校验ReceiverId有效性
+        if (!receiverIdService.validateReceiverId(receiverId)) {
+            return Result.unauthorized("ReceiverId无效或已过期，无删除消息权限");
+        }
+
+        // 2. 校验sessionId参数完整性
+        if (!StringUtils.hasText(sessionId)) {
+            return Result.paramError("会话ID（sessionId）不能为空");
+        }
+
+        // 3. 可选：校验会话是否存在（可根据需求扩展，查询消息列表判断是否为空）
+        List<ChatMessageVO> msgList = chatMessageMapperCustom.selectBySessionId(sessionId);
+        if (msgList == null || msgList.isEmpty()) {
+            return Result.error("该会话无消息记录，无需删除（sessionId：" + sessionId + "）");
+        }
+
+        // 4. 调用Mapper执行批量删除操作
+        int deleteResult = chatMessageMapperCustom.deleteBySessionId(sessionId);
+        if (deleteResult <= 0) {
+            return Result.error("删除会话消息失败，请重试");
+        }
+
+        // 5. 刷新ReceiverId过期时间
+        receiverIdService.refreshReceiverIdExpire(receiverId);
+
+        // 6. 返回成功结果（返回删除的消息条数，也可直接返回Boolean）
         return Result.success(true);
     }
 }

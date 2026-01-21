@@ -17,4 +17,7 @@ public interface ChatMessageService {
 
     // 标记消息为已读
     Result<Boolean> markMsgAsRead(String msgId, String receiverId);
+
+    // 新增：按sessionId删除会话所有消息
+    Result<Boolean> deleteMessageBySessionId(String sessionId, String receiverId);
 }
