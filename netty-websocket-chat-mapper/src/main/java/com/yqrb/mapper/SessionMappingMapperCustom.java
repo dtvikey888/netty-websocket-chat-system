@@ -29,6 +29,29 @@ public interface SessionMappingMapperCustom {
     @Select("SELECT * FROM session_mapping WHERE user_id = #{userId} ORDER BY create_time DESC")
     List<SessionMappingVO> selectByUserId(String userId);
 
-    // 删除会话映射（按sessionId）
+    // 删除会话映射（按sessionId）—— 已与XML中的SQL映射，无需修改
     int deleteBySessionId(String sessionId);
+
+    // ========== 新增缺失方法 ==========
+    /**
+     * 按客服ID查询承接的所有会话（客服的会话列表）
+     */
+    @Select("SELECT * FROM session_mapping WHERE service_staff_id = #{serviceStaffId} ORDER BY update_time DESC")
+    List<SessionMappingVO> selectByServiceStaffId(String serviceStaffId);
+
+    /**
+     * 按用户ID+申请ID查询会话（避免重复创建）
+     */
+    @Select("SELECT * FROM session_mapping WHERE user_id = #{userId} AND app_id = #{appId}")
+    SessionMappingVO selectByUserIdAndAppId(SessionMappingVO sessionMapping);
+
+    /**
+     * 更新会话映射（如更换客服、刷新更新时间）
+     */
+    int updateSessionMapping(SessionMappingVO sessionMapping);
+
+    /**
+     * 按申请ID删除会话映射（申请作废/完成后清理）
+     */
+    int deleteByAppId(String appId);
 }
