@@ -8,7 +8,6 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
-@Repository
 public interface NewspaperFileRecordMapperCustom {
 
     // 保存压缩图片上传记录（无原始文件相关字段）

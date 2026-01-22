@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.yqrb.mapper.SessionMappingMapperCustom">
 
-    <!-- 结果集映射（统一字段映射，避免重复定义） -->
+    <!-- 保留结果集映射（优化字段映射，接口注解可复用） -->
     <resultMap id="SessionMappingResultMap" type="com.yqrb.pojo.vo.SessionMappingVO">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
@@ -13,12 +13,11 @@
         <result column="update_time" property="updateTime"/>
     </resultMap>
 
-    <!-- 原有：按sessionId删除 -->
+    <!-- 仅保留无注解的delete/update方法（无重复） -->
     <delete id="deleteBySessionId">
         DELETE FROM session_mapping WHERE session_id = #{sessionId}
     </delete>
 
-    <!-- 新增：更新会话映射 -->
     <update id="updateSessionMapping">
         UPDATE session_mapping
         SET service_staff_id = #{serviceStaffId},
@@ -26,25 +25,9 @@
         WHERE session_id = #{sessionId}
     </update>
 
-    <!-- 新增：按appId删除会话映射 -->
     <delete id="deleteByAppId">
         DELETE FROM session_mapping WHERE app_id = #{appId}
     </delete>
 
-    <!-- 可选：覆盖注解查询的结果集（统一映射，推荐） -->
-    <select id="selectBySessionId" resultMap="SessionMappingResultMap">
-        SELECT * FROM session_mapping WHERE session_id = #{sessionId}
-    </select>
-    <select id="selectByAppId" resultMap="SessionMappingResultMap">
-        SELECT * FROM session_mapping WHERE app_id = #{appId}
-    </select>
-    <select id="selectByUserId" resultMap="SessionMappingResultMap">
-        SELECT * FROM session_mapping WHERE user_id = #{userId} ORDER BY create_time DESC
-    </select>
-    <select id="selectByServiceStaffId" resultMap="SessionMappingResultMap">
-        SELECT * FROM session_mapping WHERE service_staff_id = #{serviceStaffId} ORDER BY update_time DESC
-    </select>
-    <select id="selectByUserIdAndAppId" resultMap="SessionMappingResultMap">
-        SELECT * FROM session_mapping WHERE user_id = #{userId} AND app_id = #{appId}
-    </select>
+    <!-- 完全删除所有select标签（因为接口注解已定义，避免重复） -->
 </mapper>

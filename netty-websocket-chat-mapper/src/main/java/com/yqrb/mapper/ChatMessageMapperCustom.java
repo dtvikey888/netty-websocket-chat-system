@@ -8,7 +8,6 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
-@Repository
 public interface ChatMessageMapperCustom {
 
     // 保存聊天消息
