@@ -30,6 +30,8 @@ public class SessionMappingControllerTest {
     @Autowired
     private ReceiverIdService receiverIdService;
 
+
+
     // 通用生成测试ReceiverId
     private String getTestReceiverId(String userId, String userName) {
         ReceiverIdSessionVO session = receiverIdService.generateReceiverId(userId, userName);
