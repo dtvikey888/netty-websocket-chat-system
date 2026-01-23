@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.util.Date;
 
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Pattern;
+
 //登报申请表实体
 @Data
 @NoArgsConstructor
@@ -15,9 +18,13 @@ import java.util.Date;
 public class NewspaperApplicationVO {
     private Long id; // 主键ID
     private String appId; // 申请唯一标识
+    @NotBlank(message = "用户ID不能为空") // 非空且不能是空白字符串
     private String userId; // 用户ID
     private String serviceStaffId; // 客服ID
+    @NotBlank(message = "用户名不能为空")
     private String userName; // 申请人姓名
+    @NotBlank(message = "用户手机号不能为空")
+    @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确") // 校验11位手机号格式
     private String userPhone; // 申请人电话
     private String certType; // 登报类型
     private String sealRe; // 是否重新刻章（yes/no）
