@@ -11,7 +11,7 @@ import javax.annotation.Resource;
 import java.util.List;
 
 @RestController
-@RequestMapping("/yqrb/session")
+@RequestMapping("/newspaper/session")
 @Api(tags = "会话映射接口")
 public class SessionMappingController {
 
@@ -25,6 +25,7 @@ public class SessionMappingController {
             @RequestBody SessionMappingVO sessionMapping,
             @RequestHeader("ReceiverId") String receiverId
     ) {
+
         return sessionMappingService.createSessionMapping(sessionMapping, receiverId);
     }
 

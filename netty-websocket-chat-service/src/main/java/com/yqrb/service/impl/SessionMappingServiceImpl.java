@@ -1,8 +1,11 @@
 package com.yqrb.service.impl;
-
+import com.yqrb.mapper.NewspaperApplicationMapperCustom;
 import com.yqrb.mapper.SessionMappingMapperCustom;
+import com.yqrb.pojo.vo.CustomerServiceVO;
+import com.yqrb.pojo.vo.NewspaperApplicationVO;
 import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.SessionMappingVO;
+import com.yqrb.service.CustomerServiceService;
 import com.yqrb.service.ReceiverIdService;
 import com.yqrb.service.SessionMappingService;
 import org.springframework.stereotype.Service;
@@ -22,7 +25,13 @@ public class SessionMappingServiceImpl implements SessionMappingService {
     @Resource
     private ReceiverIdService receiverIdService;
 
-    // ========== 原有方法（保留，补充完整） ==========
+    // ========== 新增注入：用于客服校验和联动更新登报申请 ==========
+    @Resource
+    private CustomerServiceService customerServiceService;
+    @Resource
+    private NewspaperApplicationMapperCustom newspaperApplicationMapperCustom;
+
+    // ========== 原有方法（保留，补充客服校验+联动更新逻辑） ==========
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<SessionMappingVO> createSessionMapping(SessionMappingVO sessionMapping, String receiverId) {
@@ -40,6 +49,15 @@ public class SessionMappingServiceImpl implements SessionMappingService {
         if (exist != null) {
             return Result.error("该用户+申请已存在会话，无需重复创建");
         }
+
+        // ========== 修正：客服有效性校验（使用正确的status字段+枚举常量） ==========
+        if (StringUtils.hasText(sessionMapping.getServiceStaffId())) {
+            Result<CustomerServiceVO> csResult = customerServiceService.getCustomerByStaffId(sessionMapping.getServiceStaffId(), receiverId);
+            if (csResult.getData() == null || !CustomerServiceVO.STATUS_ONLINE.equals(csResult.getData().getStatus())) {
+                return Result.paramError("客服不存在或未在线");
+            }
+        }
+
         // 4. 补全时间字段
         sessionMapping.setCreateTime(new Date());
         sessionMapping.setUpdateTime(new Date());
@@ -48,6 +66,17 @@ public class SessionMappingServiceImpl implements SessionMappingService {
         if (insert <= 0) {
             return Result.error("创建会话映射失败");
         }
+
+        // ========== 新增：联动更新登报申请的service_staff_id ==========
+        if (StringUtils.hasText(sessionMapping.getServiceStaffId()) && StringUtils.hasText(sessionMapping.getAppId())) {
+            NewspaperApplicationVO application = newspaperApplicationMapperCustom.selectByAppId(sessionMapping.getAppId());
+            if (application != null) {
+                application.setServiceStaffId(sessionMapping.getServiceStaffId());
+                application.setUpdateTime(new Date());
+                newspaperApplicationMapperCustom.updateStatusByAppId(application);
+            }
+        }
+
         // 6. 刷新ReceiverId过期时间
         receiverIdService.refreshReceiverIdExpire(receiverId);
         return Result.success(sessionMapping);
@@ -101,7 +130,7 @@ public class SessionMappingServiceImpl implements SessionMappingService {
         return delete > 0 ? Result.success(true) : Result.error("删除失败");
     }
 
-    // ========== 新增缺失方法的实现 ==========
+    // ========== 新增缺失方法的实现（补充客服校验+联动更新逻辑） ==========
     @Override
     public Result<List<SessionMappingVO>> getByServiceStaffId(String serviceStaffId, String receiverId) {
         // 1. 鉴权
@@ -112,6 +141,13 @@ public class SessionMappingServiceImpl implements SessionMappingService {
         if (!StringUtils.hasText(serviceStaffId)) {
             return Result.paramError("serviceStaffId不能为空");
         }
+
+        // ========== 修正：客服有效性校验（仅校验存在性，无需在线） ==========
+        Result<CustomerServiceVO> csResult = customerServiceService.getCustomerByStaffId(serviceStaffId, receiverId);
+        if (csResult.getData() == null) {
+            return Result.paramError("客服不存在");
+        }
+
         // 3. 查询数据
         List<SessionMappingVO> list = sessionMappingMapperCustom.selectByServiceStaffId(serviceStaffId);
         // 4. 刷新ReceiverId
@@ -146,6 +182,13 @@ public class SessionMappingServiceImpl implements SessionMappingService {
         if (!StringUtils.hasText(sessionMapping.getSessionId()) || !StringUtils.hasText(sessionMapping.getServiceStaffId())) {
             return Result.paramError("sessionId和serviceStaffId不能为空");
         }
+
+        // ========== 修正：客服有效性校验（使用正确的status字段+枚举常量） ==========
+        Result<CustomerServiceVO> csResult = customerServiceService.getCustomerByStaffId(sessionMapping.getServiceStaffId(), receiverId);
+        if (csResult.getData() == null || !CustomerServiceVO.STATUS_ONLINE.equals(csResult.getData().getStatus())) {
+            return Result.paramError("客服不存在或未在线");
+        }
+
         // 3. 校验会话是否存在
         SessionMappingVO exist = sessionMappingMapperCustom.selectBySessionId(sessionMapping.getSessionId());
         if (exist == null) {
@@ -155,6 +198,17 @@ public class SessionMappingServiceImpl implements SessionMappingService {
         sessionMapping.setUpdateTime(new Date());
         // 5. 执行更新
         int update = sessionMappingMapperCustom.updateSessionMapping(sessionMapping);
+
+        // ========== 新增：联动更新登报申请的service_staff_id ==========
+        if (update > 0 && StringUtils.hasText(exist.getAppId())) {
+            NewspaperApplicationVO application = newspaperApplicationMapperCustom.selectByAppId(exist.getAppId());
+            if (application != null) {
+                application.setServiceStaffId(sessionMapping.getServiceStaffId());
+                application.setUpdateTime(new Date());
+                newspaperApplicationMapperCustom.updateStatusByAppId(application);
+            }
+        }
+
         // 6. 刷新ReceiverId
         receiverIdService.refreshReceiverIdExpire(receiverId);
         return update > 0 ? Result.success(true) : Result.error("更新失败");
