@@ -1,9 +1,5 @@
 package com.yqrb;
 
-import com.yqrb.pojo.vo.CustomerServiceVO;
-import com.yqrb.pojo.vo.Result;
-import com.yqrb.service.CustomerServiceService;
-import com.yqrb.service.ReceiverIdService;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
