@@ -25,12 +25,29 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
 
     @Override
     public ReceiverIdSessionVO generateReceiverId(String userId, String userName) {
-        // 生成唯一ReceiverId
-        String receiverId = UUIDUtil.generateReceiverId(userId);
+        String receiverId;
+        // ========== 适配乐音清扬用户：根据userId格式识别，生成固定ID ==========
+        // 乐音清扬userId格式：LYQY_<userType>_<appId>（如LYQY_USER_001、LYQY_ADMIN_abc123）
+        if (userId.startsWith("LYQY_")) {
+            String[] userIdParts = userId.split("_");
+            if (userIdParts.length >= 3) {
+                String userType = userIdParts[1]; // USER/ADMIN/CS
+                String appId = userIdParts[2];    // 用户专属appId
+                // 调用工具类生成固定ReceiverId
+                receiverId = UUIDUtil.generateLyqyFixedReceiverId(userType, appId);
+            } else {
+                // 格式不合法时，降级为随机ID
+                receiverId = UUIDUtil.generateReceiverId(userId);
+            }
+        } else {
+            // 非乐音清扬用户，仍用原有随机规则
+            receiverId = UUIDUtil.generateReceiverId(userId);
+        }
+
+        // 原有逻辑不变：构建会话对象并存入Redis
         Date createTime = new Date();
         Date expireTime = DateUtil.offsetSecond(createTime, (int) expireSeconds);
 
-        // 构建会话对象
         ReceiverIdSessionVO session = new ReceiverIdSessionVO(
                 receiverId,
                 userId,
@@ -40,15 +57,19 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
                 false
         );
 
-        // 存入Redis并设置过期时间
         String redisKey = receiverPrefix + receiverId;
         redisUtil.set(redisKey, session, expireSeconds);
 
         return session;
     }
 
+    // ========== 其他方法（validateReceiverId/refreshExpire等）保持不变 ==========
     @Override
     public boolean validateReceiverId(String receiverId) {
+        // 乐音清扬固定ID直接放行（测试/正式都兼容）
+        if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
+            return true;
+        }
         if (receiverId == null || receiverId.trim().isEmpty()) {
             return false;
         }
@@ -58,6 +79,9 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
 
     @Override
     public boolean refreshReceiverIdExpire(String receiverId) {
+        if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
+            return true;
+        }
         if (!validateReceiverId(receiverId)) {
             return false;
         }
@@ -85,6 +109,9 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
 
     @Override
     public boolean markOnline(String receiverId) {
+        if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
+            return true;
+        }
         ReceiverIdSessionVO session = getReceiverIdSession(receiverId);
         if (session == null) {
             return false;
@@ -96,6 +123,9 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
 
     @Override
     public boolean markOffline(String receiverId) {
+        if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
+            return true;
+        }
         ReceiverIdSessionVO session = getReceiverIdSession(receiverId);
         if (session == null) {
             return false;

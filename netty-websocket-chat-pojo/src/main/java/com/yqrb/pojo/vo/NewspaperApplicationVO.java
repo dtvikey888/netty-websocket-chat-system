@@ -1,11 +1,13 @@
 package com.yqrb.pojo.vo;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.Date;
+
 //登报申请表实体
 @Data
 @NoArgsConstructor
@@ -23,10 +25,21 @@ public class NewspaperApplicationVO {
     private String orderNo; // 订单编号
     private String status; // 申请状态
     private String auditRemark; // 审核备注/驳回原因
+
+    // 核心修改：添加日期格式化注解，适配yyyy-MM-dd HH:mm:ss格式
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date submitTime; // 提交时间
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date auditTime; // 审核时间
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date payTime; // 支付时间
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date createTime; // 创建时间
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date updateTime; // 更新时间
 
     // 申请状态枚举（简化业务判断）

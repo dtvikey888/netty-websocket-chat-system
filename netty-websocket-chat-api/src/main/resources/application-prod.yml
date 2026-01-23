@@ -13,7 +13,7 @@ spring:
     password: fjw986321  # 数据库密码（Dev环境专属）
   # Redis配置（修正冲突，保留Jedis，注释Lettuce，调整格式）
   redis:
-    database: 0  # 操作Redis的第0个数据库
+    database: 1  # 操作Redis的第1个数据库
     host: 127.0.0.1  # Redis服务地址
     port: 6379  # Redis服务端口
     password: fjw3989099  # Redis密码（Dev环境专属）
