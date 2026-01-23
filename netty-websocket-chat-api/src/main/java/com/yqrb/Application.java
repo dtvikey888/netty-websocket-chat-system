@@ -1,5 +1,6 @@
 package com.yqrb;
 
+import lombok.extern.slf4j.Slf4j;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -24,6 +25,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 //@EnableTransactionManagement
 //开启定时执行功能
 @EnableScheduling
+@Slf4j // 引入lombok日志，替换System.out，更规范
 public class Application {
     public static void main(String[] args) {
         SpringApplication.run(Application.class, args);
