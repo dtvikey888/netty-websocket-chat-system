@@ -1,5 +1,10 @@
 package com.yqrb;
 
+import com.yqrb.controller.SessionMappingController;
+import com.yqrb.pojo.vo.ReceiverIdSessionVO;
+import com.yqrb.pojo.vo.Result;
+import com.yqrb.pojo.vo.SessionMappingVO;
+import com.yqrb.service.ReceiverIdService;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
