@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yqrb.mapper.NewspaperFileRecordMapperCustom">
+
+    <!-- 结果集映射（适配仅压缩图片字段） -->
+    <resultMap id="FileRecordResultMap" type="com.yqrb.pojo.vo.NewspaperFileRecordVO">
+        <id column="id" property="id"/>
+        <result column="file_id" property="fileId"/>
+        <result column="app_id" property="appId"/>
+        <result column="user_id" property="userId"/>
+        <result column="compress_file_name" property="compressFileName"/>
+        <result column="compress_file_path" property="compressFilePath"/>
+        <result column="compress_file_size" property="compressFileSize"/>
+        <result column="file_ext" property="fileExt"/>
+        <result column="upload_time" property="uploadTime"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 批量删除压缩文件记录（按appId） -->
+    <delete id="deleteByAppId">
+        DELETE FROM newspaper_file_record WHERE app_id = #{appId}
+    </delete>
+
+</mapper>
