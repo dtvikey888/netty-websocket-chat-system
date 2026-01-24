@@ -12,6 +12,12 @@ public class Result<T> {
     private String msg;
     private T data;
 
+    // ====== 新增：判断是否成功的核心方法 ======
+    public boolean isSuccess() {
+        // 以code=200作为成功的判断标准
+        return this.code != null && this.code == 200;
+    }
+
     // 操作成功（无返回数据）
     public static <T> Result<T> success() {
         return new Result<>(200, "操作成功", null);

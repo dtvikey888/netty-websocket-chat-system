@@ -39,16 +39,28 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
     private ReceiverIdService receiverIdService;
 
     // 新增：系统自动分配在线客服的私有方法
-    private String autoAssignOnlineCustomer() {
-        // 调用客服服务，查询所有在线客服
-        Result<List<CustomerServiceVO>> onlineCsResult = customerServiceService.getOnlineCustomerList(null);
-        if (onlineCsResult.getData() == null || onlineCsResult.getData().isEmpty()) {
-            throw new RuntimeException("当前无在线客服，无法提交申请");
+// 优化：返回Result<String>，统一响应格式，避免抛未捕获异常
+// 优化：新增receiverId参数，传递给客服查询方法
+    private Result<String> autoAssignOnlineCustomer(String receiverId) {
+        // 1. 调用客服服务，查询所有在线客服（传入有效的receiverId）
+        Result<List<CustomerServiceVO>> onlineCsResult = customerServiceService.getOnlineCustomerList(receiverId);
+
+        // 2. 完整校验查询结果（按优先级：先判空→再判是否成功→最后判数据是否为空）
+        if (onlineCsResult == null) {
+            return Result.error("查询在线客服失败：服务返回空结果");
         }
-        // 简单实现：随机选一个在线客服（可扩展为按接待量/负载均衡）
+        if (!onlineCsResult.isSuccess()) {
+            return Result.error("查询在线客服失败：" + onlineCsResult.getMsg());
+        }
         List<CustomerServiceVO> onlineCsList = onlineCsResult.getData();
+        if (onlineCsList == null || onlineCsList.isEmpty()) {
+            return Result.error("当前无在线客服，无法提交申请");
+        }
+
+        // 3. 随机选一个在线客服
         int randomIndex = new Random().nextInt(onlineCsList.size());
-        return onlineCsList.get(randomIndex).getServiceStaffId();
+        String serviceStaffId = onlineCsList.get(randomIndex).getServiceStaffId();
+        return Result.success(serviceStaffId);
     }
 
     @Override
@@ -59,10 +71,17 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
             return Result.unauthorized("ReceiverId无效或已过期");
         }
 
-        // 在submitApplication中调用：提交时自动分配客服
+        // 2. 自动分配客服（适配Result返回值）
+        // 2. 自动分配客服（传递有效的receiverId）
         if (!StringUtils.hasText(application.getServiceStaffId())) {
-            application.setServiceStaffId(autoAssignOnlineCustomer());
+            // 关键修改：传入有效的receiverId，而非让getOnlineCustomerList接收null
+            Result<String> csResult = autoAssignOnlineCustomer(receiverId);
+            if (!csResult.isSuccess()) {
+                return Result.error(csResult.getMsg());
+            }
+            application.setServiceStaffId(csResult.getData());
         }
+
 
         // 2. 补全申请信息
         String appId = UUIDUtil.generateAppId();
