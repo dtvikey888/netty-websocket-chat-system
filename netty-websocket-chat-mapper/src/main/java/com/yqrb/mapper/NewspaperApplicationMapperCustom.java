@@ -33,7 +33,7 @@ public interface NewspaperApplicationMapperCustom {
 
     // 更新登报申请状态（审核/支付/驳回）
     @Update("UPDATE newspaper_application SET status = #{status}, audit_remark = #{auditRemark}, " +
-            "audit_time = #{auditTime}, pay_time = #{payTime}, update_time = #{updateTime} " +
+            "audit_time = #{auditTime}, pay_time = #{payTime}, pay_amount= #{payAmount}, update_time = #{updateTime} " +
             "WHERE app_id = #{appId}")
     int updateStatusByAppId(NewspaperApplicationVO application);
 

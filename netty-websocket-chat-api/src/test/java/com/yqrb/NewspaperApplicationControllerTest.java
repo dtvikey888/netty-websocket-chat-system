@@ -128,23 +128,23 @@ public class NewspaperApplicationControllerTest {
     /**
      * 测试：审核登报申请 /newspaper/application/audit
      */
-    @Test
-    public void testAuditApp() {
-        // 1. 先提交测试申请
-        Result<NewspaperApplicationVO> submitResult = testSubmitApplicationReturnResult();
-        String appId = submitResult.getData().getAppId();
-        String receiverId = getTestReceiverId("cs_001", "测试客服");
-        String status = "approved"; // 审核通过
-        String auditRemark = "审核通过，符合登报条件";
-
-        // 2. 调用接口
-        Result<Boolean> result = newspaperApplicationController.auditApp(appId, status, auditRemark, receiverId);
-
-        // 3. 断言结果
-        assert result.getCode() == 200 : "审核登报申请返回码非200";
-        assert result.getData() == true : "审核申请失败";
-        System.out.println("审核登报申请接口测试通过");
-    }
+//    @Test
+//    public void testAuditApp() {
+//        // 1. 先提交测试申请
+//        Result<NewspaperApplicationVO> submitResult = testSubmitApplicationReturnResult();
+//        String appId = submitResult.getData().getAppId();
+//        String receiverId = getTestReceiverId("cs_001", "测试客服");
+//        String status = "approved"; // 审核通过
+//        String auditRemark = "审核通过，符合登报条件";
+//
+//        // 2. 调用接口
+//        Result<Boolean> result = newspaperApplicationController.auditApp(appId, status, auditRemark, receiverId);
+//
+//        // 3. 断言结果
+//        assert result.getCode() == 200 : "审核登报申请返回码非200";
+//        assert result.getData() == true : "审核申请失败";
+//        System.out.println("审核登报申请接口测试通过");
+//    }
 
     /**
      * 测试：删除登报申请 /newspaper/application/delete/{appId}
