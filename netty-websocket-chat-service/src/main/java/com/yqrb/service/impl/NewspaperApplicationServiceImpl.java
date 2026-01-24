@@ -158,10 +158,10 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
             return Result.error("登报申请不存在");
         }
 
-        // 校验状态有效性
-        if (!status.equals(NewspaperApplicationVO.STATUS_AUDITED) &&
-                !status.equals(NewspaperApplicationVO.STATUS_REJECTED) &&
-                !status.equals(NewspaperApplicationVO.STATUS_PAID)) {
+        // 校验状态有效性（常量前置，规避空指针）
+        if (!NewspaperApplicationVO.STATUS_AUDITED.equals(status) &&
+                !NewspaperApplicationVO.STATUS_REJECTED.equals(status) &&
+                !NewspaperApplicationVO.STATUS_PAID.equals(status)) {
             return Result.paramError("无效的申请状态，仅支持AUDITED/REJECTED/PAID");
         }
 
@@ -211,8 +211,8 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
             }
         }
 
-        // 若为支付状态，补全支付时间
-        if (status.equals(NewspaperApplicationVO.STATUS_PAID)) {
+        // 若为支付状态，补全支付时间（常量前置，规避空指针）
+        if (NewspaperApplicationVO.STATUS_PAID.equals(status)) {
             application.setPayTime(currentDate);
         }
 
