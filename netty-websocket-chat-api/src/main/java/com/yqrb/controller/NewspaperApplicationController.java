@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.validation.Valid;
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -85,20 +86,18 @@ public class NewspaperApplicationController {
     }
 
     @PutMapping("/audit")
-    @ApiOperation("审核登报申请")
+    @ApiOperation("审核登报申请（审核人手动设置付款金额）")
     public Result<Boolean> auditApp(
-            @ApiParam(value = "申请唯一标识appId", required = true)
-            @RequestParam String appId,
-            @ApiParam(value = "审核状态：PENDING/AUDITED/PAID/REJECTED", required = true)
-            @RequestParam String status,
-            @ApiParam(value = "审核备注/驳回原因（非必填）")
-            @RequestParam(required = false) String auditRemark,
-            @ApiParam(value = "用户会话标识ReceiverId", required = true)
-            @RequestHeader("ReceiverId") String receiverId
+            @ApiParam(value = "申请唯一标识appId", required = true) @RequestParam String appId,
+            @ApiParam(value = "审核状态：PENDING/AUDITED/PAID/REJECTED", required = true) @RequestParam String status,
+            @ApiParam(value = "审核备注/驳回原因（非必填）") @RequestParam(required = false) String auditRemark,
+            // 新增：付款金额（仅审核通过时必填）
+            @ApiParam(value = "付款金额（审核通过时必填，大于0）") @RequestParam(required = false) BigDecimal payAmount,
+            @ApiParam(value = "用户会话标识ReceiverId", required = true) @RequestHeader("ReceiverId") String receiverId
     ) {
-        return newspaperApplicationService.auditApplication(appId, status, auditRemark, receiverId);
+        // 透传payAmount参数给服务层
+        return newspaperApplicationService.auditApplication(appId, status, auditRemark, payAmount, receiverId);
     }
-
     @DeleteMapping("/delete/{appId}")
     @ApiOperation("删除登报申请")
     public Result<Boolean> deleteApp(
