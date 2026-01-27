@@ -1,5 +1,6 @@
 package com.yqrb.netty;
 
+import com.alibaba.fastjson.JSON;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
 import com.yqrb.service.ReceiverIdService;
 import com.yqrb.util.DateUtil;
@@ -95,7 +96,12 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
      */
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, WebSocketMsgVO webSocketMsg) throws Exception {
+        // 强制日志：确认方法被触发
+        System.err.println("===== 消息已到达channelRead0 =====");
         Channel currentChannel = ctx.channel();
+        // 核心：确认解码后的VO对象
+        System.out.println("【Handler】接收到解码后的消息VO：" + JSON.toJSONString(webSocketMsg));
+
         String receiverId = webSocketMsg.getReceiverId();
 
         // 1. 校验ReceiverId有效性，首次消息绑定Channel与ReceiverId
