@@ -39,7 +39,7 @@ public class SessionMappingServiceImpl implements SessionMappingService {
         if (!receiverIdService.validateReceiverId(receiverId)) {
             return Result.unauthorized("ReceiverId无效或过期");
         }
-        // 2. 校验必填参数
+        // 2. 校验必填参数1
         if (!StringUtils.hasText(sessionMapping.getSessionId()) || !StringUtils.hasText(sessionMapping.getAppId())
                 || !StringUtils.hasText(sessionMapping.getUserId())) {
             return Result.paramError("sessionId、appId、userId不能为空");
