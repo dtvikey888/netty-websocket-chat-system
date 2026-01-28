@@ -20,28 +20,28 @@ import java.util.concurrent.TimeUnit;
 
 @Component
 public class NettyWebSocketServer {
-    // ===== 适配你的配置：端口8081，WebSocket路径/newspaper/websocket =====
     @Value("${custom.netty.websocket.port:8081}")
     private int port;
     @Value("${custom.netty.websocket.boss-thread-count:1}")
     private int bossThreadCount;
-    @Value("${custom.netty.websocket.worker-thread-count:0}") // 0=默认CPU核心数*2
+    @Value("${custom.netty.websocket.worker-thread-count:0}")
     private int workerThreadCount;
-    @Value("${custom.netty.websocket.idle-timeout:30}") // 30秒心跳超时
+    @Value("${custom.netty.websocket.idle-timeout:30}")
     private int idleTimeout;
 
-    // 自定义AttributeKey：存储客户端URI（替代不稳定的WEBSOCKET_URI）
     public static final AttributeKey<String> CLIENT_WEBSOCKET_URI = AttributeKey.valueOf("CLIENT_WEBSOCKET_URI");
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private ChannelFuture serverFuture;
 
-    // ===== Spring环境下异步启动（避免阻塞Spring初始化）=====
+    // 手动创建处理器实例（避免Spring注入冲突）
+    private final WebSocketMsgCodec webSocketMsgCodec = new WebSocketMsgCodec();
+    private final NettyWebSocketServerHandler nettyWebSocketServerHandler = new NettyWebSocketServerHandler();
+
     @PostConstruct
     public void start() {
         new Thread(() -> {
-            // 初始化线程组（适配你的配置）
             bossGroup = new NioEventLoopGroup(bossThreadCount);
             workerGroup = workerThreadCount > 0 ? new NioEventLoopGroup(workerThreadCount) : new NioEventLoopGroup();
 
@@ -55,47 +55,65 @@ public class NettyWebSocketServer {
                             @Override
                             protected void initChannel(SocketChannel ch) throws Exception {
                                 ChannelPipeline pipeline = ch.pipeline();
+                                String channelId = ch.id().asShortText();
+                                System.out.println("【通道初始化】通道ID：" + channelId);
 
-                                // ===== 1. HTTP基础处理器（WebSocket基于HTTP握手）=====
+                                // ===== 1. HTTP基础处理器（必须最先加）=====
                                 pipeline.addLast(new HttpServerCodec()); // HTTP编解码
                                 pipeline.addLast(new ChunkedWriteHandler()); // 大文件支持
                                 pipeline.addLast(new HttpObjectAggregator(1024 * 1024)); // HTTP消息聚合
 
-                                // ===== 2. 核心适配：捕获客户端URI（解决WEBSOCKET_URI解析问题）=====
+                                // ===== 2. 捕获客户端URI（必须在协议升级前）=====
                                 pipeline.addLast(new ChannelInboundHandlerAdapter() {
                                     @Override
                                     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
                                         if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
                                             io.netty.handler.codec.http.HttpRequest request = (io.netty.handler.codec.http.HttpRequest) msg;
                                             String uri = request.uri();
-                                            // 存储URI到Channel属性（供Handler解析sessionId）
                                             ctx.channel().attr(CLIENT_WEBSOCKET_URI).set(uri);
-                                            System.out.println("捕获客户端URI：" + uri);
-                                            // 处理完移除当前Handler，避免重复处理
+                                            System.out.println("【URI捕获】通道ID：" + channelId + "，URI：" + uri);
+                                            // 移除当前Handler，避免重复处理
                                             ctx.pipeline().remove(this);
                                         }
                                         super.channelRead(ctx, msg);
                                     }
                                 });
 
-                                // ===== 3. WebSocket协议升级（适配你的路径/newspaper/websocket）=====
-                                // 注意：路径末尾不加/，客户端URI是/newspaper/websocket/SESSION_xxx
-                                pipeline.addLast(new WebSocketServerProtocolHandler("/newspaper/websocket", null, true, 1024 * 1024));
+                                // ===== 3. WebSocket协议升级（核心！必须在HTTP处理器后、编解码器前）=====
+                                pipeline.addLast(new WebSocketServerProtocolHandler("/newspaper/websocket", null, true, 1024 * 1024) {
+                                    @Override
+                                    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+                                        if (evt == WebSocketServerProtocolHandler.ServerHandshakeStateEvent.HANDSHAKE_COMPLETE) {
+                                            System.out.println("【协议升级】通道ID：" + channelId + "，WebSocket握手成功");
+                                            // 握手成功后移除HTTP处理器（优化性能）
+                                            ctx.pipeline().remove(HttpServerCodec.class);
+                                            ctx.pipeline().remove(HttpObjectAggregator.class);
+                                            ctx.pipeline().remove(ChunkedWriteHandler.class);
+                                        }
+                                        super.userEventTriggered(ctx, evt);
+                                    }
+                                });
 
-                                // ===== 4. 心跳检测（适配你的idleTimeout配置）=====
+                                // ===== 4. 心跳检测 =====
                                 pipeline.addLast(new IdleStateHandler(idleTimeout, 0, 0, TimeUnit.SECONDS));
 
-                                // ===== 5. 你的自定义编解码器（保持原有逻辑）=====
-                                pipeline.addLast(new WebSocketMsgCodec());
+                                // ===== 5. 自定义编解码器（必须在协议升级后）=====
+                                pipeline.addLast(webSocketMsgCodec);
 
-                                // ===== 6. 你的业务Handler（保持原有逻辑）=====
-                                pipeline.addLast(new NettyWebSocketServerHandler());
+                                // ===== 6. 业务处理器（最后加）=====
+                                pipeline.addLast(nettyWebSocketServerHandler);
+
+                                System.out.println("【通道初始化完成】通道ID：" + channelId + "，处理器链路：" + pipeline.names());
                             }
                         });
 
-                // 绑定端口（适配你的8081端口）
+                // 绑定端口
                 serverFuture = bootstrap.bind(port).sync();
-                System.out.println("Netty WebSocket服务启动成功：端口=" + port + "，路径=/newspaper/websocket");
+                System.out.println("=====================================");
+                System.out.println("Netty WebSocket服务启动成功");
+                System.out.println("端口：" + port);
+                System.out.println("WebSocket路径：/newspaper/websocket");
+                System.out.println("=====================================");
 
                 // 阻塞等待服务关闭
                 serverFuture.channel().closeFuture().sync();
@@ -103,14 +121,12 @@ public class NettyWebSocketServer {
                 Thread.currentThread().interrupt();
                 System.err.println("Netty服务启动失败：" + e.getMessage());
             } finally {
-                // 优雅关闭线程组
                 bossGroup.shutdownGracefully();
                 workerGroup.shutdownGracefully();
             }
         }, "Netty-WebSocket-Server-Thread").start();
     }
 
-    // ===== Spring销毁时优雅关闭Netty =====
     @PreDestroy
     public void stop() {
         if (serverFuture != null) {
