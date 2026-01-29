@@ -20,4 +20,7 @@ public class WebSocketMsgVO {
     // 关键优化：指定Date字段的序列化格式，兼容字符串/时间戳解析
     @JSONField(format = "yyyy-MM-dd HH:mm:ss", serialize = true, deserialize = true)
     private Date sendTime; // 发送时间
+
+    // 在 WebSocketMsgVO 类中添加以下字段（lombok 会自动生成 getter/setter）
+    private String senderType; // 发送者类型：USER/CS/SYSTEM
 }

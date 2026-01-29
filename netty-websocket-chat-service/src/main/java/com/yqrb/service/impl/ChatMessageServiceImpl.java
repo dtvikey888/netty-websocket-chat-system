@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -38,11 +39,20 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             return Result.paramError("会话ID和消息内容不能为空");
         }
 
+        // 新增：校验并处理发送者类型
+        // 原校验逻辑替换
+        String senderType = webSocketMsg.getSenderType();
+        // 兼容Java 8的写法：用Arrays.asList替代List.of
+        if (!StringUtils.hasText(senderType)
+                || !Arrays.asList(ChatMessageVO.SENDER_TYPE_USER, ChatMessageVO.SENDER_TYPE_CS, ChatMessageVO.SENDER_TYPE_SYSTEM).contains(senderType)) {
+            senderType = ChatMessageVO.SENDER_TYPE_USER; // 默认值兜底
+        }
+
         // 3. 构建聊天消息实体
         ChatMessageVO chatMessage = new ChatMessageVO();
         chatMessage.setMsgId(UUIDUtil.generateMsgId());
         chatMessage.setSenderId(webSocketMsg.getUserId());
-        chatMessage.setSenderType(ChatMessageVO.SENDER_TYPE_USER);
+        chatMessage.setSenderType(senderType); // 替换固定值，使用校验后的发送者类型
         chatMessage.setReceiverId(webSocketMsg.getReceiverId());
         chatMessage.setContent(webSocketMsg.getMsgContent());
         chatMessage.setMsgType(webSocketMsg.getMsgType() == null ? ChatMessageVO.MSG_TYPE_TEXT : webSocketMsg.getMsgType());

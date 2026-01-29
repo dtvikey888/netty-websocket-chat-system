@@ -213,6 +213,7 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
                 // 2. 构建聊天消息VO（修正字段错误：userId → senderId）
                 WebSocketMsgVO payMsg = new WebSocketMsgVO();
                 payMsg.setSessionId(sessionId); // 专属会话ID
+                payMsg.setSenderType("CS"); // 发送者类型：USER/CS/SYSTEM
                 payMsg.setUserId(serviceStaffId); // 发送人：审核客服ID（对应VO的userId字段）
                 payMsg.setReceiverId(application.getUserId()); // 接收人：客户ID
                 payMsg.setMsgType("TEXT"); // 消息类型：文本
