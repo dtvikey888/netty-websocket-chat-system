@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
@@ -21,9 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 修复：调整URI解析时机，解决channelActive中URI为null的问题
+ * 优化：统一日志、移除冗余操作、增强消息转发健壮性
  */
 public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<WebSocketMsgVO> {
-    // 注入日志对象（在类中定义）
+    // 注入SLF4J日志对象（统一日志风格）
     private static final Logger logger = LoggerFactory.getLogger(NettyWebSocketServerHandler.class);
 
     private static final ChannelGroup ONLINE_CHANNELS = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
@@ -36,8 +38,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
         Channel channel = ctx.channel();
         String channelId = channel.id().asShortText();
         ONLINE_CHANNELS.add(channel);
-        // 仅打印基础日志，不解析URI（避免时序问题）
-        System.out.println("【客户端上线】通道ID：" + channelId + "，在线人数：" + ONLINE_CHANNELS.size());
+        // 优化：替换System.out为SLF4J logger
+        logger.info("【客户端上线】通道ID：{}，在线人数：{}", channelId, ONLINE_CHANNELS.size());
     }
 
     @Override
@@ -46,17 +48,31 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
         String channelId = channel.id().asShortText();
         ONLINE_CHANNELS.remove(channel);
 
-        RECEIVER_CHANNEL_MAP.entrySet().removeIf(entry -> {
-            if (entry.getValue().equals(channel)) {
-                String receiverId = entry.getKey();
-                System.out.println("【客户端离线】通道ID：" + channelId + "，receiverId：" + receiverId);
-                return true;
+        // 优化：高并发下更安全的清理逻辑，添加清理结果日志
+        String removedReceiverId = null;
+        // 同步锁保证并发安全（ConcurrentHashMap本身线程安全，迭代器移除也安全，此处增强健壮性）
+        synchronized (RECEIVER_CHANNEL_MAP) {
+            for (Map.Entry<String, Channel> entry : RECEIVER_CHANNEL_MAP.entrySet()) {
+                if (entry.getValue().equals(channel)) {
+                    removedReceiverId = entry.getKey();
+                    RECEIVER_CHANNEL_MAP.remove(removedReceiverId);
+                    break;
+                }
             }
-            return false;
-        });
+        }
+
+        // 优化：打印清理结果，便于排查问题
+        if (removedReceiverId != null) {
+            logger.info("【客户端离线】通道ID：{}，被移除的接收者ID：{}", channelId, removedReceiverId);
+        } else {
+            logger.warn("【客户端离线】通道ID：{}，未在RECEIVER_CHANNEL_MAP中找到对应记录", channelId);
+        }
 
         String sessionId = channel.attr(SESSION_ID_KEY).get();
-        System.out.println("【客户端断开】通道ID：" + channelId + "，sessionId：" + (sessionId == null ? "未知" : sessionId) + "，在线人数：" + ONLINE_CHANNELS.size());
+        logger.info("【客户端断开】通道ID：{}，sessionId：{}，在线人数：{}",
+                channelId,
+                (sessionId == null ? "未知" : sessionId),
+                ONLINE_CHANNELS.size());
     }
 
     @Override
@@ -67,14 +83,14 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
                 Channel channel = ctx.channel();
                 String channelId = channel.id().asShortText();
                 String sessionId = channel.attr(SESSION_ID_KEY).get();
-                System.out.println("【客户端超时】通道ID：" + channelId + "，sessionId：" + (sessionId == null ? "未知" : sessionId));
+                // 优化：替换System.out为SLF4J logger
+                logger.info("【客户端超时】通道ID：{}，sessionId：{}", channelId, (sessionId == null ? "未知" : sessionId));
                 channel.close();
                 return;
             }
         }
         super.userEventTriggered(ctx, evt);
     }
-
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, WebSocketMsgVO webSocketMsg) throws Exception {
@@ -101,13 +117,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             return;
         }
 
-        // ========== 补充1：存入RECEIVER_CHANNEL_MAP + 即时打印 ==========
-        RECEIVER_CHANNEL_MAP.put(receiverId, currentChannel);
-        // 打印存入结果和当前Map状态
-        logger.info("【RECEIVER_CHANNEL_MAP 存入成功】→ 纯净接收者ID：{}，通道ID：{}", receiverId, channelId);
-        logger.info("【当前Map状态】→ 总记录数：{}，所有接收者ID：{}",
-                RECEIVER_CHANNEL_MAP.size(),
-                RECEIVER_CHANNEL_MAP.keySet()); // 打印所有已存入的receiverId
+        // 优化：移除重复存入RECEIVER_CHANNEL_MAP的代码（握手时已存入，无需重复操作）
+        // 若需更新通道映射，可添加判断：if (!RECEIVER_CHANNEL_MAP.containsKey(receiverId)) {}
 
         // 后续receiverIdService注入完成后，替换为真实校验逻辑
         // boolean isValid = receiverIdService.isValid(receiverId);
@@ -138,27 +149,47 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
         logger.info("【消息处理完成】发送者：{}，接收者：{}，内容：{}", userId, receiverId, msgContent);
     }
 
-
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         Channel channel = ctx.channel();
         String channelId = channel.id().asShortText();
         String sessionId = channel.attr(SESSION_ID_KEY).get();
-        System.err.println("【通道异常】通道ID：" + channelId + "，sessionId：" + (sessionId == null ? "未知" : sessionId));
-        cause.printStackTrace();
+        // 优化：替换System.err为SLF4J logger，打印完整异常堆栈
+        logger.error("【通道异常】通道ID：{}，sessionId：{}，异常原因：{}",
+                channelId,
+                (sessionId == null ? "未知" : sessionId),
+                cause.getMessage(),
+                cause);
         channel.close();
     }
 
+    /**
+     * 优化：增强消息转发健壮性，添加发送结果监听、可写性判断
+     */
     private void forwardMessage(WebSocketMsgVO webSocketMsg) {
         String targetReceiverId = webSocketMsg.getReceiverId();
         Channel targetChannel = RECEIVER_CHANNEL_MAP.get(targetReceiverId);
 
-        if (targetChannel != null && targetChannel.isActive()) {
-            String jsonMsg = JSON.toJSONString(webSocketMsg);
-            targetChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg));
-            System.out.println("【消息转发成功】接收者：" + targetReceiverId + "，消息：" + jsonMsg);
+        // 优化：增加isOpen()、isWritable()判断，避免向无效通道写入消息
+        if (targetChannel != null && targetChannel.isOpen() && targetChannel.isActive() && targetChannel.isWritable()) {
+            try {
+                String jsonMsg = JSON.toJSONString(webSocketMsg);
+                // 优化：添加ChannelFuture监听器，监听消息发送结果
+                targetChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg))
+                        .addListener((ChannelFutureListener) future -> {
+                            if (future.isSuccess()) {
+                                logger.info("【消息转发成功】接收者：{}，消息内容：{}", targetReceiverId, jsonMsg);
+                            } else {
+                                logger.error("【消息转发失败】接收者：{}，消息发送失败，异常原因：{}",
+                                        targetReceiverId,
+                                        future.cause().getMessage());
+                            }
+                        });
+            } catch (Exception e) {
+                logger.error("【消息转发失败】接收者：{}，编码/发送异常：{}", targetReceiverId, e.getMessage(), e);
+            }
         } else {
-            System.out.println("【消息转发失败】目标接收者离线：" + targetReceiverId);
+            logger.info("【消息转发失败】目标接收者离线或通道无效，接收者：{}", targetReceiverId);
         }
     }
 }
