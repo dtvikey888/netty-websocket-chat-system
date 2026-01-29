@@ -12,7 +12,7 @@ import java.util.Date;
 @AllArgsConstructor
 public class WebSocketMsgVO {
     // 消息类型常量 - 新增：新申请提醒
-    public static final String MSG_TYPE_NEW_APPLICATION = "SYSTEM_TIP";
+    public static final String MSG_TYPE_NEW_APPLICATION = "NEW_APPLICATION_REMIND";
     public static final String MSG_TYPE_TEXT = "TEXT";
     public static final String MSG_TYPE_PAY_REMIND = "PAY_REMIND";
     public static final String MSG_TYPE_SYSTEM_TIP = "SYSTEM_TIP";
