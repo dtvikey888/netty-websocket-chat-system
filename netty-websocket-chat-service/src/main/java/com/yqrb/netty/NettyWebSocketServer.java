@@ -63,31 +63,61 @@ public class NettyWebSocketServer {
                                 // ===== 1. HTTP基础处理器（必须最先加）=====
                                 pipeline.addLast(new HttpServerCodec()); // HTTP编解码
                                 pipeline.addLast(new ChunkedWriteHandler()); // 大文件支持
-                                pipeline.addLast(new HttpObjectAggregator(1024 * 1024)); // HTTP消息聚合
+                                pipeline.addLast(new HttpObjectAggregator(64*1024 * 1024)); // HTTP消息聚合
 
+                                // ===== 2. 捕获客户端URI（必须在协议升级前）=====
                                 // ===== 2. 捕获客户端URI（必须在协议升级前）=====
                                 pipeline.addLast(new ChannelInboundHandlerAdapter() {
                                     @Override
                                     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
                                         if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
                                             io.netty.handler.codec.http.HttpRequest request = (io.netty.handler.codec.http.HttpRequest) msg;
-                                            String uri = request.uri();
-                                            ctx.channel().attr(CLIENT_WEBSOCKET_URI).set(uri);
-                                            log.info("【URI捕获】通道ID：{}，URI：{}", channelId, uri);
-                                            // 移除当前Handler，避免重复处理
-                                            ctx.pipeline().remove(this);
+                                            // 新增：仅处理GET请求（WebSocket握手是GET请求）
+                                            if (request.method().equals(io.netty.handler.codec.http.HttpMethod.GET)) {
+                                                String uri = request.uri();
+                                                ctx.channel().attr(CLIENT_WEBSOCKET_URI).set(uri);
+                                                log.info("【URI捕获】通道ID：{}，URI：{}", channelId, uri);
+
+                                                // 修复：先传递消息，再移除自身Handler（确保请求不被阻断）
+                                                super.channelRead(ctx, msg);
+
+                                                // 移除当前Handler，避免重复处理
+                                                ctx.pipeline().remove(this);
+                                                return;
+                                            }
                                         }
+                                        // 非GET请求/非HttpRequest，直接传递
                                         super.channelRead(ctx, msg);
                                     }
                                 });
 
-                                // ===== 3. WebSocket协议升级（核心！必须在HTTP处理器后、编解码器前）=====
+                                // ===== 3. 心跳检测（★ 修复：移动到WebSocket协议处理器之前 ★）=====
+                                pipeline.addLast(new IdleStateHandler(idleTimeout, 0, 0, TimeUnit.SECONDS));
+
+                                // ===== 4. WebSocket协议升级（核心！必须在HTTP处理器后、编解码器前）=====
                                 pipeline.addLast(new WebSocketServerProtocolHandler("/newspaper/websocket", null, true, 1024 * 1024) {
                                     @Override
                                     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
                                         if (evt == WebSocketServerProtocolHandler.ServerHandshakeStateEvent.HANDSHAKE_COMPLETE) {
                                             log.info("【协议升级】通道ID：{}，WebSocket握手成功", channelId);
-                                            // 握手成功后移除HTTP处理器（优化性能）
+
+                                            // ===== 新增：握手成功后，解析客服ID并注册到RECEIVER_CHANNEL_MAP =====
+                                            Channel channel = ctx.channel();
+                                            // 1. 获取之前捕获的URI
+                                            String uri = channel.attr(NettyWebSocketServer.CLIENT_WEBSOCKET_URI).get();
+                                            if (uri != null && uri.startsWith("/newspaper/websocket/")) {
+                                                // 2. 解析出客服ID（sessionId）
+                                                String csReceiverId = uri.substring("/newspaper/websocket/".length());
+                                                // 3. 存入通道的SESSION_ID_KEY（保持和原有逻辑一致）
+                                                channel.attr(NettyWebSocketServerHandler.SESSION_ID_KEY).set(csReceiverId);
+                                                // 4. 注册到客服通道映射表（★ 确保ID无前缀，和后续查询一致 ★）
+                                                NettyWebSocketServerHandler.RECEIVER_CHANNEL_MAP.put(csReceiverId, channel);
+                                                log.info("【会话注册成功】通道ID：{}，客服ID：{}，已加入在线映射表", channelId, csReceiverId);
+                                            } else {
+                                                log.error("【会话注册失败】通道ID：{}，URI格式错误：{}", channelId, uri);
+                                            }
+
+                                            // 握手成功后移除HTTP处理器（优化性能，保留原有逻辑）
                                             ctx.pipeline().remove(HttpServerCodec.class);
                                             ctx.pipeline().remove(HttpObjectAggregator.class);
                                             ctx.pipeline().remove(ChunkedWriteHandler.class);
@@ -96,15 +126,10 @@ public class NettyWebSocketServer {
                                     }
                                 });
 
-                                // ===== 4. 心跳检测 =====
-                                pipeline.addLast(new IdleStateHandler(idleTimeout, 0, 0, TimeUnit.SECONDS));
-
                                 // ===== 5. 自定义编解码器（必须在协议升级后）=====
-                                // 关键修正：每次初始化Channel时新建实例！！！
                                 pipeline.addLast(new WebSocketMsgCodec());
 
                                 // ===== 6. 业务处理器（最后加）=====
-                                // 关键修正：每次初始化Channel时新建实例！！！
                                 pipeline.addLast(new NettyWebSocketServerHandler());
 
                                 log.info("【通道初始化完成】通道ID：{}，处理器链路：{}", channelId, pipeline.names());

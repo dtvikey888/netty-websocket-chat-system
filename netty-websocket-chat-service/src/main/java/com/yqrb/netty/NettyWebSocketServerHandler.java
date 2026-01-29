@@ -12,6 +12,8 @@ import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.GlobalEventExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Date;
 import java.util.Map;
@@ -21,9 +23,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * 修复：调整URI解析时机，解决channelActive中URI为null的问题
  */
 public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<WebSocketMsgVO> {
+    // 注入日志对象（在类中定义）
+    private static final Logger logger = LoggerFactory.getLogger(NettyWebSocketServerHandler.class);
+
     private static final ChannelGroup ONLINE_CHANNELS = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
-    private static final Map<String, Channel> RECEIVER_CHANNEL_MAP = new ConcurrentHashMap<>();
-    private static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("SESSION_ID");
+    public static final Map<String, Channel> RECEIVER_CHANNEL_MAP = new ConcurrentHashMap<>();
+    public static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("SESSION_ID");
 
     // ===== 核心修复：不在channelActive中解析URI，改为首次接收消息时解析 =====
     @Override
@@ -71,67 +76,68 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
     }
 
 
-
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, WebSocketMsgVO webSocketMsg) throws Exception {
         Channel currentChannel = ctx.channel();
         String channelId = currentChannel.id().asShortText();
-
-        // ===== 核心修复：首次接收消息时解析URI和sessionId =====
         String sessionId = currentChannel.attr(SESSION_ID_KEY).get();
+
+        // 使用SLF4J打印info级别日志，确认消息到达
+        logger.info("=====================================");
+        logger.info("【消息接收成功】通道ID：{}", channelId);
+        logger.info("sessionId：{}", (sessionId == null ? "未知" : sessionId));
+        logger.info("消息内容：{}", JSON.toJSONString(webSocketMsg));
+        logger.info("=====================================");
+
+        // 已有sessionId（握手时已注册），直接处理消息
         if (sessionId == null) {
-            String uri = currentChannel.attr(NettyWebSocketServer.CLIENT_WEBSOCKET_URI).get();
-            if (uri != null && uri.startsWith("/newspaper/websocket/")) {
-                sessionId = uri.substring("/newspaper/websocket/".length());
-                currentChannel.attr(SESSION_ID_KEY).set(sessionId);
-                System.out.println("【首次消息解析】通道ID：" + channelId + "，sessionId：" + sessionId);
-            } else {
-                System.err.println("【首次消息解析】通道ID：" + channelId + "，URI解析失败：" + uri);
-            }
-        }
-
-        // 强制打印日志，确认消息到达
-        System.out.println("=====================================");
-        System.out.println("【消息接收成功】通道ID：" + channelId);
-        System.out.println("sessionId：" + (sessionId == null ? "未知" : sessionId));
-        System.out.println("消息内容：" + JSON.toJSONString(webSocketMsg));
-        System.out.println("=====================================");
-
-        String receiverId = webSocketMsg.getReceiverId();
-        if (receiverId == null || receiverId.trim().isEmpty()) {
-            System.err.println("【消息处理失败】receiverId为空，通道ID：" + channelId);
+            logger.error("【消息处理失败】通道未注册会话ID，通道ID：{}", channelId);
             return;
         }
 
-        if (!RECEIVER_CHANNEL_MAP.containsKey(receiverId)) {
-            boolean isValid = true;
-            System.out.println("【调试模式】receiverIdService未注入，跳过校验");
-            isValid = true;
-
-            if (!isValid) {
-                System.out.println("【消息处理失败】无效的receiverId：" + receiverId + "，通道ID：" + channelId);
-                currentChannel.close();
-                return;
-            }
-
-            RECEIVER_CHANNEL_MAP.put(receiverId, currentChannel);
-            System.out.println("【绑定成功】receiverId：" + receiverId + " -> 通道ID：" + channelId);
+        String receiverId = webSocketMsg.getReceiverId();
+        if (receiverId == null || receiverId.trim().isEmpty()) {
+            logger.error("【消息处理失败】receiverId为空，通道ID：{}", channelId);
+            return;
         }
 
+        // ========== 补充1：存入RECEIVER_CHANNEL_MAP + 即时打印 ==========
+        RECEIVER_CHANNEL_MAP.put(receiverId, currentChannel);
+        // 打印存入结果和当前Map状态
+        logger.info("【RECEIVER_CHANNEL_MAP 存入成功】→ 纯净接收者ID：{}，通道ID：{}", receiverId, channelId);
+        logger.info("【当前Map状态】→ 总记录数：{}，所有接收者ID：{}",
+                RECEIVER_CHANNEL_MAP.size(),
+                RECEIVER_CHANNEL_MAP.keySet()); // 打印所有已存入的receiverId
+
+        // 后续receiverIdService注入完成后，替换为真实校验逻辑
+        // boolean isValid = receiverIdService.isValid(receiverId);
+        boolean isValid = true;
+        logger.debug("【调试模式】receiverIdService未注入，跳过校验");
+
+        if (!isValid) {
+            logger.error("【消息处理失败】无效的receiverId：{}，通道ID：{}", receiverId, channelId);
+            currentChannel.close();
+            return;
+        }
+
+        // 补全消息默认值
         if (webSocketMsg.getSendTime() == null) {
             webSocketMsg.setSendTime(new Date());
         }
         if (webSocketMsg.getMsgType() == null) {
             webSocketMsg.setMsgType("TEXT");
         }
-        if (sessionId != null) {
-            webSocketMsg.setSessionId(sessionId);
-        }
+        webSocketMsg.setSessionId(sessionId);
 
+        // 转发消息（此时Map中已有数据，转发时可查询）
         forwardMessage(webSocketMsg);
 
-        System.out.println("【消息处理完成】发送者：" + webSocketMsg.getUserId() + "，接收者：" + receiverId + "，内容：" + webSocketMsg.getMsgContent());
+        // 非空判断，避免空指针
+        String userId = webSocketMsg.getUserId() == null ? "未知" : webSocketMsg.getUserId();
+        String msgContent = webSocketMsg.getMsgContent() == null ? "无内容" : webSocketMsg.getMsgContent();
+        logger.info("【消息处理完成】发送者：{}，接收者：{}，内容：{}", userId, receiverId, msgContent);
     }
+
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {

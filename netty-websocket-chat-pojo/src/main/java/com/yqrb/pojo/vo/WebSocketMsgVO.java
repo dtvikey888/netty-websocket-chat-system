@@ -11,8 +11,19 @@ import java.util.Date;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WebSocketMsgVO {
-    private String receiverId; // 接收者会话ID
-    private String userId; // 发送者用户ID
+    // 消息类型常量 - 新增：新申请提醒
+    public static final String MSG_TYPE_NEW_APPLICATION = "SYSTEM_TIP";
+    public static final String MSG_TYPE_TEXT = "TEXT";
+    public static final String MSG_TYPE_PAY_REMIND = "PAY_REMIND";
+    public static final String MSG_TYPE_SYSTEM_TIP = "SYSTEM_TIP";
+
+    // 发送者类型常量
+    public static final String SENDER_TYPE_USER = "USER";
+    public static final String SENDER_TYPE_CS = "CS";
+    public static final String SENDER_TYPE_SYSTEM = "SYSTEM";
+
+    private String receiverId; // 接收者会话ID（客服/用户的serviceStaffId/userId）
+    private String userId; // 发送者用户ID（系统推送时填SYSTEM）
     private String msgContent; // 消息内容
     private String msgType; // 消息类型
     private String sessionId; // 会话ID
@@ -21,6 +32,5 @@ public class WebSocketMsgVO {
     @JSONField(format = "yyyy-MM-dd HH:mm:ss", serialize = true, deserialize = true)
     private Date sendTime; // 发送时间
 
-    // 在 WebSocketMsgVO 类中添加以下字段（lombok 会自动生成 getter/setter）
     private String senderType; // 发送者类型：USER/CS/SYSTEM
 }

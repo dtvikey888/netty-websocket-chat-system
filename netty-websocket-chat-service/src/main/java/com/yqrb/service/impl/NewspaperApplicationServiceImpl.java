@@ -2,6 +2,7 @@ package com.yqrb.service.impl;
 
 import com.yqrb.mapper.NewspaperApplicationMapperCustom;
 import com.yqrb.mapper.SessionMappingMapperCustom;
+import com.yqrb.netty.NettyWebSocketUtil;
 import com.yqrb.pojo.vo.*;
 import com.yqrb.service.ChatMessageService;
 import com.yqrb.service.CustomerServiceService;
@@ -9,6 +10,8 @@ import com.yqrb.service.NewspaperApplicationService;
 import com.yqrb.service.ReceiverIdService;
 import com.yqrb.util.DateUtil;
 import com.yqrb.util.UUIDUtil;
+import io.netty.channel.Channel;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -21,6 +24,10 @@ import java.util.Random;
 
 @Service
 public class NewspaperApplicationServiceImpl implements NewspaperApplicationService {
+
+    // 新增：注入 Netty WebSocket 工具类
+    @Resource
+    private NettyWebSocketUtil nettyWebSocketUtil;
 
     @Resource
     private NewspaperApplicationMapperCustom newspaperApplicationMapperCustom;
@@ -118,12 +125,75 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
         sessionMapping.setUpdateTime(currentDate);
         sessionMappingMapperCustom.insertSessionMapping(sessionMapping);
 
-        // 6. 刷新ReceiverId过期时间
+        // 7. 🔥 核心新增：推送新申请提醒给对应客服 🔥
+        try {
+            pushNewApplicationToCs(application, sessionId, currentDate);
+        } catch (Exception e) {
+            // 推送失败不影响主流程，仅打错误日志
+            System.err.printf("【新申请推送失败】appId：%s，客服ID：%s，原因：%s%n",
+                    appId, application.getServiceStaffId(), e.getMessage());
+        }
+
+        // 8. 刷新ReceiverId过期时间
         receiverIdService.refreshReceiverIdExpire(receiverId);
 
-        // 7. 返回申请详情
+        // 9. 返回申请详情
         NewspaperApplicationVO resultApp = newspaperApplicationMapperCustom.selectByAppId(appId);
         return Result.success(resultApp);
+    }
+
+    /**
+     * 新增：向客服推送「新申请提醒」WebSocket消息
+     * @param application 登报申请信息
+     * @param sessionId 会话ID
+     * @param submitTime 提交时间
+     */
+    private void pushNewApplicationToCs(NewspaperApplicationVO application, String sessionId, Date submitTime) {
+        // 1. 获取推送目标（客服的 receiverId = serviceStaffId）
+        String csReceiverId = application.getServiceStaffId();
+        if (!StringUtils.hasText(csReceiverId)) {
+            System.err.println("【新申请推送】客服ID为空，跳过推送");
+            return;
+        }
+
+        // 2. 校验客服是否在线（有活跃的 WebSocket 通道）
+        if (!nettyWebSocketUtil.isReceiverOnline(csReceiverId)) {
+            System.out.printf("【新申请推送】客服%s未在线，跳过推送%n", csReceiverId);
+            return;
+        }
+
+        // 3. 构建 WebSocket 消息内容
+        String msgContent = String.format(
+                "【新登报申请提醒】%n" +
+                        "申请ID：%s%n" +
+                        "申请人：%s%n" +
+                        "联系电话：%s%n" +
+                        "申请类型：%s%n" +
+                        "提交时间：%s",
+                application.getAppId(),
+                application.getUserName(),
+                application.getUserPhone(),
+                application.getCertType(),
+                DateUtil.formatDate(submitTime, "yyyy-MM-dd HH:mm:ss") // 需确保 DateUtil 有该格式化方法，若没有可自行实现
+        );
+
+        // 4. 封装 WebSocketMsgVO
+        WebSocketMsgVO newAppMsg = new WebSocketMsgVO();
+        newAppMsg.setReceiverId(csReceiverId); // 接收者：客服
+        newAppMsg.setUserId("SYSTEM"); // 发送者：系统
+        newAppMsg.setSenderType(WebSocketMsgVO.SENDER_TYPE_SYSTEM); // 发送者类型：系统
+        newAppMsg.setMsgContent(msgContent); // 提醒内容
+        newAppMsg.setMsgType(WebSocketMsgVO.MSG_TYPE_NEW_APPLICATION); // 专属消息类型
+        newAppMsg.setSessionId(sessionId); // 绑定会话ID
+        newAppMsg.setSendTime(submitTime); // 发送时间 = 提交时间
+
+        // 5. 获取客服通道，推送消息
+        Channel csChannel = nettyWebSocketUtil.getChannelByReceiverId(csReceiverId);
+        if (csChannel != null) {
+            String jsonMsg = com.alibaba.fastjson.JSON.toJSONString(newAppMsg);
+            csChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg));
+            System.out.printf("【新申请推送成功】客服%s已收到申请%s的提醒%n", csReceiverId, application.getAppId());
+        }
     }
 
     @Override
