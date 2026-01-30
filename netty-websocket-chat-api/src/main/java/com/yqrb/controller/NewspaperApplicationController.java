@@ -28,6 +28,11 @@ public class NewspaperApplicationController {
     private NewspaperApplicationService newspaperApplicationService;
 
     /**
+     * 我是客服 那么 LYQY_CS_5fbb6357b77d2e6436a46336
+     * 我也是普通用户 那么  LYQY_USER_5fbb6357b77d2e6436a46336
+     * 前端我打开会有两个按钮 一个选普通用户进去是普通用户申请页面 前缀 LYQY_USER_
+     * 选了客服那么就是进去客服页面 前缀 LYQY_CS_
+     *
      * 你理解的完全正确！后端通过 WebSocket 推送「新申请提醒」只是第一步，前端客服页面确实还需要基于 WebSocket 实现「申请数据的实时更新」—— 但这里要区分「轻量提醒推送」和「完整数据更新」的逻辑，不需要做复杂的全量数据推送，有两种更优的实现方案，既满足「实时更新」需求，又能避免服务端压力过大。
      * 一、 先理清两个核心概念（避免混淆）
      * 目前你已实现的：「新申请提醒推送」（通知型，轻量）
@@ -66,6 +71,12 @@ public class NewspaperApplicationController {
      * 低耦合：后端不关心前端的列表展示逻辑（分页、筛选、排序），只负责推送「有新数据」的通知，前端自主控制数据拉取，后续列表逻辑变更无需改动后端。
      * 高可靠：即使 WebSocket 消息偶尔丢失，客服手动刷新页面也能获取完整数据，不会出现「数据不一致」的问题；同时避免了「后端推送完整列表」的传输压力。
      * 大幅降低服务端压力：从「客服定时轮询（比如每 30 秒一次）」变为「有新申请才触发拉取」，查询请求量会大幅减少（比如从「每个客服每分钟 2 次查询」变为「每天几十次查询」），完全达到你的核心价值目标。
+     *
+     * 用户进入登报系统/登录成功/进入申请页面 → 调用「生成 receiverId 接口」→ 后端生成 receiverId + 存入 Redis + 返回给前端
+     *     ↓（前端存储 receiverId，后续所有请求都携带它）
+     * 用户填写申请信息，点击「提交」→ 前端将 receiverId 放在 Header 中，和申请数据一起提交给后端
+     *     ↓
+     * 后端拿到 Header 中的 receiverId → 做合法性校验（查 Redis）→ 校验通过则处理申请，不通过则直接拦截
      *
      * 用户提交登报申请 → 申请入库+会话映射入库 → 提取客服ID
      *     ↓
@@ -133,6 +144,12 @@ public class NewspaperApplicationController {
         return newspaperApplicationService.getApplicationListByUserId(userId, receiverId);
     }
 
+    /**
+     * 该接口是客服专用接口，供客服查询自己负责处理的所有登报申请列表。
+     * @param serviceStaffId
+     * @param receiverId
+     * @return
+     */
     @GetMapping("/list/cs/{serviceStaffId}")
     @ApiOperation("查询客服处理申请列表")
     public Result<List<NewspaperApplicationVO>> getAppListByCs(
@@ -144,6 +161,16 @@ public class NewspaperApplicationController {
         return newspaperApplicationService.getApplicationListByServiceStaffId(serviceStaffId, receiverId);
     }
 
+    /**
+     * 这个接口是「客服专用接口」，用于客服在工作台对普通用户提交的登报申请进行「审核处理」，
+     * 核心功能包括「审核通过（设置付款金额）」「审核驳回（填写驳回原因）」「标记已支付」，同时会自动给用户推送对应的通知消息。
+     * @param appId
+     * @param status
+     * @param auditRemark
+     * @param payAmount
+     * @param receiverId
+     * @return
+     */
     @PutMapping("/audit")
     @ApiOperation("审核登报申请（审核人手动设置付款金额）")
     public Result<Boolean> auditApp(

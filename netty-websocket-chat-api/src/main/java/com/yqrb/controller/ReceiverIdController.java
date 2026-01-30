@@ -61,6 +61,12 @@ public class ReceiverIdController {
      * 生成乐音清扬用户固定ReceiverId（按appId）
      * 适配乐音清扬用户，生成格式固定的ReceiverId，便于测试和兼容
      *
+     * 用户进入登报系统/登录成功/进入申请页面 → 调用「生成 receiverId 接口」→ 后端生成 receiverId + 存入 Redis + 返回给前端
+     *     ↓（前端存储 receiverId，后续所有请求都携带它）
+     * 用户填写申请信息，点击「提交」→ 前端将 receiverId 放在 Header 中，和申请数据一起提交给后端
+     *     ↓
+     * 后端拿到 Header 中的 receiverId → 做合法性校验（查 Redis）→ 校验通过则处理申请，不通过则直接拦截
+     *
      * @param userType 用户类型：USER/ADMIN/CS（仅支持这三种）
      * @param appId    用户专属appId（如001、abc123，不可为空）
      * @param userName 用户名（如：乐音清扬普通用户，不可为空）

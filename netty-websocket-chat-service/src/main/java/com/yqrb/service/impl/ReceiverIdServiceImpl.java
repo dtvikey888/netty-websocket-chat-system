@@ -26,14 +26,12 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
     @Override
     public ReceiverIdSessionVO generateReceiverId(String userId, String userName) {
         String receiverId;
-        // ========== 适配乐音清扬用户：根据userId格式识别，生成固定ID ==========
-        // 乐音清扬userId格式：LYQY_<userType>_<appId>（如LYQY_USER_001、LYQY_ADMIN_abc123）
+        // ========== 适配乐音清扬用户：根据userId格式识别，生成固定ID（生成规则不变） ==========
         if (userId.startsWith("LYQY_")) {
             String[] userIdParts = userId.split("_");
             if (userIdParts.length >= 3) {
                 String userType = userIdParts[1]; // USER/ADMIN/CS
                 String appId = userIdParts[2];    // 用户专属appId
-                // 调用工具类生成固定ReceiverId
                 receiverId = UUIDUtil.generateLyqyFixedReceiverId(userType, appId);
             } else {
                 // 格式不合法时，降级为随机ID
@@ -44,7 +42,7 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
             receiverId = UUIDUtil.generateReceiverId(userId);
         }
 
-        // 原有逻辑不变：构建会话对象并存入Redis
+        // 原有逻辑不变：构建会话对象并存入Redis（固定ID也会存入Redis，为后续校验做准备）
         Date createTime = new Date();
         Date expireTime = DateUtil.offsetSecond(createTime, (int) expireSeconds);
 
@@ -63,31 +61,27 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
         return session;
     }
 
-    // ========== 其他方法（validateReceiverId/refreshExpire等）保持不变 ==========
+    // ========== 核心修改1：validateReceiverId 移除固定ID直接放行，统一Redis校验 ==========
     @Override
     public boolean validateReceiverId(String receiverId) {
-        // 乐音清扬固定ID直接放行（测试/正式都兼容）
-        if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
-            return true;
-        }
+        // 1. 先做非空校验（所有ID都需要满足）
         if (receiverId == null || receiverId.trim().isEmpty()) {
             return false;
         }
+        // 2. 拼接Redis Key（固定ID和普通ID格式一致）
         String redisKey = receiverPrefix + receiverId;
+        // 3. 查询Redis，存在且未过期则合法（无任何特殊放行，统一校验）
         return redisUtil.get(redisKey) != null;
     }
 
+    // ========== 核心修改2：refreshReceiverIdExpire 移除固定ID直接返回，统一刷新逻辑 ==========
     @Override
     public boolean refreshReceiverIdExpire(String receiverId) {
-        // 第一步：优先判断是否是乐音清扬固定ID，直接返回true，不执行后续Redis操作
-        if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
-            String redisKey = receiverPrefix + receiverId;
-            // 调用RedisUtil刷新过期时间，返回真实执行结果
-            return redisUtil.refreshExpire(redisKey, expireSeconds);
-        }
+        // 1. 先校验ID合法性（固定ID也会走Redis校验）
         if (!validateReceiverId(receiverId)) {
             return false;
         }
+        // 2. 拼接Redis Key，刷新过期时间（所有合法ID统一处理）
         String redisKey = receiverPrefix + receiverId;
         return redisUtil.refreshExpire(redisKey, expireSeconds);
     }
@@ -110,29 +104,29 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
         return (ReceiverIdSessionVO) redisUtil.get(redisKey);
     }
 
+    // ========== 核心修改3：markOnline 移除固定ID直接放行，统一Redis校验+状态更新 ==========
     @Override
     public boolean markOnline(String receiverId) {
-        if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
-            return true;
-        }
+        // 1. 先通过Redis校验获取会话（固定ID也需要校验）
         ReceiverIdSessionVO session = getReceiverIdSession(receiverId);
         if (session == null) {
             return false;
         }
+        // 2. 更新在线状态，重新存入Redis（所有合法ID统一处理）
         session.setIsOnline(true);
         String redisKey = receiverPrefix + receiverId;
         return redisUtil.set(redisKey, session, expireSeconds);
     }
 
+    // ========== 核心修改4：markOffline 移除固定ID直接放行，统一Redis校验+状态更新 ==========
     @Override
     public boolean markOffline(String receiverId) {
-        if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
-            return true;
-        }
+        // 1. 先通过Redis校验获取会话（固定ID也需要校验）
         ReceiverIdSessionVO session = getReceiverIdSession(receiverId);
         if (session == null) {
             return false;
         }
+        // 2. 更新离线状态，重新存入Redis（所有合法ID统一处理）
         session.setIsOnline(false);
         String redisKey = receiverPrefix + receiverId;
         return redisUtil.set(redisKey, session, expireSeconds);
