@@ -7,8 +7,14 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public interface NewspaperApplicationService {
-    // 提交登报申请
-    Result<NewspaperApplicationVO> submitApplication(NewspaperApplicationVO application, String receiverId);
+    /**
+     * 提交登报申请（带幂等性校验）
+     * @param application 登报申请信息
+     * @param receiverId 用户会话标识
+     * @param requestId 幂等请求标识
+     * @return 申请结果
+     */
+    Result<NewspaperApplicationVO> submitApplication(NewspaperApplicationVO application, String receiverId, String requestId);
 
     // 根据appId查询申请详情
     Result<NewspaperApplicationVO> getApplicationByAppId(String appId, String receiverId);

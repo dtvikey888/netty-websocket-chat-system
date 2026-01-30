@@ -60,7 +60,7 @@
         offline_msg
         WHERE
         is_pushed = 1
-        AND create_time < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL #{days} DAY)
+        AND create_time &lt; DATE_SUB(CURRENT_TIMESTAMP, INTERVAL #{days} DAY)
     </delete>
 
     <!-- 新增：插入离线消息（核心补充，实现存储功能） -->

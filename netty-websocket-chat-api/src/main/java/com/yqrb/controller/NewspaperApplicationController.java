@@ -77,19 +77,24 @@ public class NewspaperApplicationController {
      *     ↓
      * 刷新ReceiverId过期时间 → 返回申请详情给用户
      *
-     * @param application
-     * @param receiverId
+     * 提交登报申请（带幂等性校验，支持5分钟内提交不同申请）
+     * @param application 登报申请信息
+     * @param receiverId 用户会话标识
+     * @param requestId 幂等请求标识（前端生成UUID，每笔新申请对应一个新ID）
      * @return
      */
     @PostMapping("/submit")
     @ApiOperation("提交登报申请")
     public Result<NewspaperApplicationVO> submitApplication(
             @ApiParam(value = "登报申请信息", required = true)
-            @Valid @RequestBody NewspaperApplicationVO application, // 核心：添加@Valid触发VO校验
+            @Valid @RequestBody NewspaperApplicationVO application,
             @ApiParam(value = "用户会话标识ReceiverId", required = true)
-            @RequestHeader("ReceiverId") String receiverId
+            @RequestHeader("ReceiverId") String receiverId,
+            @ApiParam(value = "幂等请求标识（前端生成UUID，每笔新申请需生成新ID）", required = true)
+            @RequestHeader("Request-Id") String requestId // 每笔不同申请对应不同requestId，正常放行
     ) {
-        return newspaperApplicationService.submitApplication(application, receiverId);
+        // 透传requestId到服务层做幂等校验
+        return newspaperApplicationService.submitApplication(application, receiverId, requestId);
     }
 
     // 全局异常处理器：捕获参数校验异常，返回友好的400错误

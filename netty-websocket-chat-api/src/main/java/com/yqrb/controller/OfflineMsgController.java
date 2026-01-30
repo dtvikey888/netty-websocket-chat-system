@@ -2,6 +2,7 @@ package com.yqrb.controller;
 
 import com.yqrb.pojo.OfflineMsg;
 import com.yqrb.pojo.query.OfflineMsgQueryParam;
+import com.yqrb.pojo.vo.OfflineMsgVO;
 import com.yqrb.pojo.vo.Result;
 import com.yqrb.service.OfflineMsgService;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +31,7 @@ public class OfflineMsgController {
      * @return 未推送离线消息列表
      */
     @GetMapping("/msgs/{serviceStaffId}")
-    public Result<List<OfflineMsg>> getOfflineMsgs(@PathVariable String serviceStaffId) {
+    public Result<List<OfflineMsgVO>> getOfflineMsgs(@PathVariable String serviceStaffId) {
         try {
             // 构建查询参数：查询该客服的未推送消息（isPushed=0）
             OfflineMsgQueryParam queryParam = new OfflineMsgQueryParam();
@@ -38,7 +39,7 @@ public class OfflineMsgController {
             queryParam.setIsPushed(0);
 
             // 查询离线消息
-            List<OfflineMsg> offlineMsgList = offlineMsgService.getOfflineMsgList(queryParam);
+            List<OfflineMsgVO> offlineMsgList = offlineMsgService.getOfflineMsgList(queryParam);
 
             // 标记消息为已推送（避免重复拉取）
             offlineMsgService.markOfflineMsgAsPushed(serviceStaffId);
