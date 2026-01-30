@@ -79,8 +79,11 @@ public class ReceiverIdServiceImpl implements ReceiverIdService {
 
     @Override
     public boolean refreshReceiverIdExpire(String receiverId) {
+        // 第一步：优先判断是否是乐音清扬固定ID，直接返回true，不执行后续Redis操作
         if (receiverId != null && receiverId.startsWith("R_FIXED_0000_LYQY_")) {
-            return true;
+            String redisKey = receiverPrefix + receiverId;
+            // 调用RedisUtil刷新过期时间，返回真实执行结果
+            return redisUtil.refreshExpire(redisKey, expireSeconds);
         }
         if (!validateReceiverId(receiverId)) {
             return false;
