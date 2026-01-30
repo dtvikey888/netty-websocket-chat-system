@@ -1,5 +1,11 @@
 package com.yqrb.netty;
 
+import com.alibaba.fastjson.JSON;
+import com.yqrb.pojo.OfflineMsg;
+import com.yqrb.pojo.query.OfflineMsgQueryParam;
+import com.yqrb.pojo.vo.OfflineMsgVO;
+import com.yqrb.pojo.vo.WebSocketMsgVO;
+import com.yqrb.service.OfflineMsgService;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -7,17 +13,21 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.stream.ChunkedWriteHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.AttributeKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Component
@@ -32,6 +42,10 @@ public class NettyWebSocketServer {
     private int workerThreadCount;
     @Value("${custom.netty.websocket.idle-timeout:30}")
     private int idleTimeout;
+
+    // 注入OfflineMsgService
+    @Autowired
+    private OfflineMsgService offlineMsgService;
 
     public static final AttributeKey<String> CLIENT_WEBSOCKET_URI = AttributeKey.valueOf("CLIENT_WEBSOCKET_URI");
 
@@ -127,6 +141,25 @@ public class NettyWebSocketServer {
                                                 channel.attr(NettyWebSocketServerHandler.SESSION_ID_KEY).set(csReceiverId);
                                                 NettyWebSocketServerHandler.RECEIVER_CHANNEL_MAP.put(csReceiverId, channel);
                                                 log.info("【会话注册成功】通道ID：{}，客服ID：{}，已加入在线映射表", channelId, csReceiverId);
+                                                // 新增：查询并推送该客服的离线消息
+                                                OfflineMsgQueryParam queryParam = new OfflineMsgQueryParam();
+                                                queryParam.setServiceStaffId(csReceiverId);
+                                                queryParam.setIsPushed(0);
+                                                List<OfflineMsgVO> offlineMsgList = offlineMsgService.getOfflineMsgList(queryParam);
+
+                                                if (!CollectionUtils.isEmpty(offlineMsgList)) {
+                                                    for (OfflineMsgVO offlineMsgVO : offlineMsgList) {
+                                                        // 构建WebSocket消息并推送
+                                                        WebSocketMsgVO wsMsg = new WebSocketMsgVO();
+                                                        wsMsg.setMsgType(offlineMsgVO.getMsgType());
+                                                        wsMsg.setMsgContent(offlineMsgVO.getMsgContent());
+                                                        wsMsg.setReceiverId(offlineMsgVO.getServiceStaffId());
+                                                        channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(wsMsg)));
+                                                    }
+                                                    // 标记为已推送
+                                                    offlineMsgService.markOfflineMsgAsPushed(csReceiverId);
+                                                    log.info("【离线消息补偿推送成功】客服：{}，共推送{}条离线消息", csReceiverId, offlineMsgList.size());
+                                                }
                                             } else {
                                                 log.error("【会话注册失败】通道ID：{}，URI格式错误：{}", channelId, uri);
                                             }

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yqrb.mapper.OfflineMsgMapperCustom">
+
+    <!-- 通用结果集映射（复用） -->
+    <resultMap id="BaseResultMap" type="com.yqrb.pojo.vo.OfflineMsgVO">
+        <id column="id" property="id"/>
+        <result column="service_staff_id" property="serviceStaffId"/>
+        <result column="msg_type" property="msgType"/>
+        <result column="app_id" property="appId"/>
+        <result column="msg_content" property="msgContent"/>
+        <result column="is_pushed" property="isPushed"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 多条件查询离线消息 -->
+    <select id="selectByCondition" parameterType="com.yqrb.pojo.query.OfflineMsgQueryParam" resultMap="BaseResultMap">
+        SELECT
+        id,
+        service_staff_id,
+        msg_type,
+        app_id,
+        msg_content,
+        is_pushed,
+        create_time,
+        update_time
+        FROM
+        offline_msg
+        WHERE
+        1=1
+        <!-- 可选条件：客服ID -->
+        <if test="serviceStaffId != null and serviceStaffId != ''">
+            AND service_staff_id = #{serviceStaffId}
+        </if>
+        <!-- 可选条件：推送状态 -->
+        <if test="isPushed != null">
+            AND is_pushed = #{isPushed}
+        </if>
+        <!-- 按创建时间倒序（最新消息在前） -->
+        ORDER BY
+        create_time DESC
+    </select>
+
+    <!-- 批量更新指定客服的消息为「已推送」 -->
+    <update id="updateIsPushedByServiceStaffId">
+        UPDATE
+        offline_msg
+        SET
+        is_pushed = #{isPushed},
+        update_time = CURRENT_TIMESTAMP
+        WHERE
+        service_staff_id = #{serviceStaffId}
+        AND is_pushed = 0 <!-- 只更新未推送的消息，避免重复更新 -->
+    </update>
+
+    <!-- 清理过期已推送的离线消息 -->
+    <delete id="cleanExpiredOfflineMsg">
+        DELETE FROM
+        offline_msg
+        WHERE
+        is_pushed = 1
+        AND create_time < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL #{days} DAY)
+    </delete>
+
+    <!-- 新增：插入离线消息（核心补充，实现存储功能） -->
+    <insert id="insertOfflineMsg" parameterType="com.yqrb.pojo.vo.OfflineMsgVO">
+        INSERT INTO offline_msg (
+        service_staff_id,
+        msg_type,
+        app_id,
+        msg_content,
+        is_pushed,
+        create_time,
+        update_time
+        ) VALUES (
+        #{serviceStaffId},
+        #{msgType},
+        #{appId},
+        #{msgContent},
+        #{isPushed},
+        CURRENT_TIMESTAMP, <!-- 数据库自动生成创建时间，无需前端传递 -->
+        CURRENT_TIMESTAMP  <!-- 数据库自动生成更新时间，无需前端传递 -->
+        )
+    </insert>
+
+</mapper>

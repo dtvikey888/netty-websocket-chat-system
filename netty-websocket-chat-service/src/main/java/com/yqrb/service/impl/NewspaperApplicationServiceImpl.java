@@ -4,14 +4,12 @@ import com.yqrb.mapper.NewspaperApplicationMapperCustom;
 import com.yqrb.mapper.SessionMappingMapperCustom;
 import com.yqrb.netty.NettyWebSocketUtil;
 import com.yqrb.pojo.vo.*;
-import com.yqrb.service.ChatMessageService;
-import com.yqrb.service.CustomerServiceService;
-import com.yqrb.service.NewspaperApplicationService;
-import com.yqrb.service.ReceiverIdService;
+import com.yqrb.service.*;
 import com.yqrb.util.DateUtil;
 import com.yqrb.util.UUIDUtil;
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -45,6 +43,10 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
     @Resource
     private ReceiverIdService receiverIdService;
 
+    // 其他原有注入
+    @Autowired
+    private OfflineMsgService offlineMsgService;
+
     // 新增：系统自动分配在线客服的私有方法
 // 优化：返回Result<String>，统一响应格式，避免抛未捕获异常
 // 优化：新增receiverId参数，传递给客服查询方法
@@ -73,6 +75,12 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<NewspaperApplicationVO> submitApplication(NewspaperApplicationVO application, String receiverId) {
+        // **************** 原有业务逻辑（入库等） ****************
+        // 1. 补全申请信息（appId、createTime等）
+        // 2. 插入登报申请数据
+        // 3. 插入会话映射数据
+        // ... 省略你的原有代码 ...
+
         // 1. 校验ReceiverId有效性
         if (!receiverIdService.validateReceiverId(receiverId)) {
             return Result.unauthorized("ReceiverId无效或已过期");
@@ -143,7 +151,7 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
     }
 
     /**
-     * 新增：向客服推送「新申请提醒」WebSocket消息
+     * 新增：向客服推送「新申请提醒」WebSocket消息（补充离线消息兜底逻辑）
      * @param application 登报申请信息
      * @param sessionId 会话ID
      * @param submitTime 提交时间
@@ -151,18 +159,13 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
     private void pushNewApplicationToCs(NewspaperApplicationVO application, String sessionId, Date submitTime) {
         // 1. 获取推送目标（客服的 receiverId = serviceStaffId）
         String csReceiverId = application.getServiceStaffId();
+        String appId = application.getAppId();
         if (!StringUtils.hasText(csReceiverId)) {
-            System.err.println("【新申请推送】客服ID为空，跳过推送");
+            System.err.println("【新申请推送】客服ID为空，跳过推送与离线存储");
             return;
         }
 
-        // 2. 校验客服是否在线（有活跃的 WebSocket 通道）
-        if (!nettyWebSocketUtil.isReceiverOnline(csReceiverId)) {
-            System.out.printf("【新申请推送】客服%s未在线，跳过推送%n", csReceiverId);
-            return;
-        }
-
-        // 3. 构建 WebSocket 消息内容
+        // 2. 构建统一消息内容（复用，同时用于在线推送和离线存储）
         String msgContent = String.format(
                 "【新登报申请提醒】%n" +
                         "申请ID：%s%n" +
@@ -170,29 +173,84 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
                         "联系电话：%s%n" +
                         "申请类型：%s%n" +
                         "提交时间：%s",
-                application.getAppId(),
+                appId,
                 application.getUserName(),
                 application.getUserPhone(),
                 application.getCertType(),
-                DateUtil.formatDate(submitTime, "yyyy-MM-dd HH:mm:ss") // 需确保 DateUtil 有该格式化方法，若没有可自行实现
+                DateUtil.formatDate(submitTime, "yyyy-MM-dd HH:mm:ss")
         );
 
-        // 4. 封装 WebSocketMsgVO
-        WebSocketMsgVO newAppMsg = new WebSocketMsgVO();
-        newAppMsg.setReceiverId(csReceiverId); // 接收者：客服
-        newAppMsg.setUserId("SYSTEM"); // 发送者：系统
-        newAppMsg.setSenderType(WebSocketMsgVO.SENDER_TYPE_SYSTEM); // 发送者类型：系统
-        newAppMsg.setMsgContent(msgContent); // 提醒内容
-        newAppMsg.setMsgType(WebSocketMsgVO.MSG_TYPE_NEW_APPLICATION); // 专属消息类型
-        newAppMsg.setSessionId(sessionId); // 绑定会话ID
-        newAppMsg.setSendTime(submitTime); // 发送时间 = 提交时间
+        // 3. 构建离线消息VO（用于客服离线/推送失败时存储）
+        OfflineMsgVO offlineMsgVO = this.buildOfflineMsgVO(application, msgContent, submitTime);
 
-        // 5. 获取客服通道，推送消息
-        Channel csChannel = nettyWebSocketUtil.getChannelByReceiverId(csReceiverId);
-        if (csChannel != null) {
-            String jsonMsg = com.alibaba.fastjson.JSON.toJSONString(newAppMsg);
-            csChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg));
-            System.out.printf("【新申请推送成功】客服%s已收到申请%s的提醒%n", csReceiverId, application.getAppId());
+        // 4. 校验客服是否在线（有活跃的 WebSocket 通道）
+        if (nettyWebSocketUtil.isReceiverOnline(csReceiverId)) {
+            // 情况1：客服在线，尝试实时推送WebSocket消息
+            try {
+                // 封装 WebSocket 消息对象
+                WebSocketMsgVO newAppMsg = new WebSocketMsgVO();
+                newAppMsg.setReceiverId(csReceiverId); // 接收者：客服
+                newAppMsg.setUserId("SYSTEM"); // 发送者：系统
+                newAppMsg.setSenderType(WebSocketMsgVO.SENDER_TYPE_SYSTEM); // 发送者类型：系统
+                newAppMsg.setMsgContent(msgContent); // 提醒内容
+                newAppMsg.setMsgType(WebSocketMsgVO.MSG_TYPE_NEW_APPLICATION); // 专属消息类型
+                newAppMsg.setSessionId(sessionId); // 绑定会话ID
+                newAppMsg.setSendTime(submitTime); // 发送时间 = 提交时间
+
+                // 获取客服通道，推送消息
+                Channel csChannel = nettyWebSocketUtil.getChannelByReceiverId(csReceiverId);
+                if (csChannel != null) {
+                    String jsonMsg = com.alibaba.fastjson.JSON.toJSONString(newAppMsg);
+                    csChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg));
+                    System.out.printf("【新申请推送成功】客服%s已收到申请%s的提醒%n", csReceiverId, appId);
+                }
+            } catch (Exception e) {
+                // 推送失败：降级存储为离线消息（兜底，避免消息丢失）
+                System.err.printf("【新申请推送异常】客服%s，申请%s，原因：%s，已触发离线消息兜底%n",
+                        csReceiverId, appId, e.getMessage());
+                this.saveOfflineMsgFallback(offlineMsgVO);
+            }
+        } else {
+            // 情况2：客服离线，直接存储为离线消息（后续上线补偿）
+            System.out.printf("【新申请推送】客服%s未在线，已存储为离线消息%n", csReceiverId);
+            this.saveOfflineMsgFallback(offlineMsgVO);
+        }
+    }
+
+    /**
+     * 辅助方法：构建离线消息VO（封装重复逻辑，提高可维护性）
+     * @param application 登报申请信息
+     * @param msgContent 消息内容
+     * @param submitTime 提交时间
+     * @return 离线消息VO
+     */
+    private OfflineMsgVO buildOfflineMsgVO(NewspaperApplicationVO application, String msgContent, Date submitTime) {
+        OfflineMsgVO offlineMsgVO = new OfflineMsgVO();
+        // 补全离线消息核心字段（与数据库表对应）
+        offlineMsgVO.setServiceStaffId(application.getServiceStaffId()); // 目标客服ID
+        offlineMsgVO.setMsgType(WebSocketMsgVO.MSG_TYPE_NEW_APPLICATION); // 消息类型（与WebSocket一致）
+        offlineMsgVO.setAppId(application.getAppId()); // 申请ID（关联登报申请）
+        offlineMsgVO.setMsgContent(msgContent); // 消息内容（与在线推送一致）
+        offlineMsgVO.setIsPushed(0); // 0=未推送（默认值，后续上线补偿后标记为1）
+        offlineMsgVO.setCreateTime(submitTime); // 创建时间=申请提交时间
+        offlineMsgVO.setUpdateTime(submitTime); // 更新时间=申请提交时间
+        return offlineMsgVO;
+    }
+
+    /**
+     * 降级存储离线消息（客服离线/推送失败时调用，兜底保障消息不丢失）
+     */
+    private void saveOfflineMsgFallback(OfflineMsgVO offlineMsgVO) {
+        try {
+            // 调用已注入的OfflineMsgService，存储离线消息
+            boolean saveResult = offlineMsgService.saveOfflineMsg(offlineMsgVO);
+            if (!saveResult) {
+                System.err.printf("【离线消息存储失败】客服%s，申请%s%n",
+                        offlineMsgVO.getServiceStaffId(), offlineMsgVO.getAppId());
+            }
+        } catch (Exception e) {
+            System.err.printf("【离线消息存储异常】客服%s，申请%s，原因：%s%n",
+                    offlineMsgVO.getServiceStaffId(), offlineMsgVO.getAppId(), e.getMessage());
         }
     }
 
