@@ -54,4 +54,16 @@ public class NewspaperApplicationVO {
     public static final String STATUS_AUDITED = "AUDITED"; // 已通过
     public static final String STATUS_PAID = "PAID"; // 已支付
     public static final String STATUS_REJECTED = "REJECTED"; // 已驳回
+
+    // 新增：退款相关状态
+    public static final String STATUS_REFUND_APPLIED = "REFUND_APPLIED";
+    public static final String STATUS_REFUNDED = "REFUNDED";
+    public static final String STATUS_REFUND_REJECTED = "REFUND_REJECTED";
+
+    // 补充：新增退款相关字段（需同步在数据库表中添加对应字段）
+    private BigDecimal refundAmount; // 退款金额（一般等于支付金额，特殊场景可部分退款）
+    private Date refundApplyTime; // 退款申请时间
+    private Date refundTime; // 实际退款完成时间
+    private String refundRemark; // 退款备注（用户申请理由/客服审核备注）
+
 }

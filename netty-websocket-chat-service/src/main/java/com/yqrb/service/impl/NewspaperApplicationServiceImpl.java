@@ -452,4 +452,220 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
         receiverIdService.refreshReceiverIdExpire(receiverId);
         return Result.success(true);
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> applyRefund(String appId, String refundRemark, String receiverId) {
+        // 步骤1：前置校验
+        if (!StringUtils.hasText(appId) || !StringUtils.hasText(refundRemark)) {
+            return Result.paramError("申请ID和退款理由不能为空");
+        }
+        if (!receiverIdService.validateReceiverId(receiverId)) {
+            return Result.unauthorized("ReceiverId无效或已过期");
+        }
+
+        // 步骤2：查询申请详情，校验申请状态
+        NewspaperApplicationVO application = newspaperApplicationMapperCustom.selectByAppId(appId);
+        if (application == null) {
+            return Result.error("登报申请不存在");
+        }
+        // 仅允许已支付（PAID）状态发起退款
+        if (!NewspaperApplicationVO.STATUS_PAID.equals(application.getStatus())) {
+            return Result.error("仅已支付的申请可发起退款，当前申请状态：" + application.getStatus());
+        }
+        // 防止重复发起退款（已发起退款的，不可重复申请）
+        if (NewspaperApplicationVO.STATUS_REFUND_APPLIED.equals(application.getStatus())) {
+            return Result.error("该申请已发起退款，请勿重复申请");
+        }
+
+        // 步骤3：补全退款申请信息，更新状态
+        Date currentDate = DateUtil.getCurrentDate();
+        application.setStatus(NewspaperApplicationVO.STATUS_REFUND_APPLIED); // 更新为「已发起退款」
+        application.setRefundRemark(refundRemark); // 存储用户退款理由
+        application.setRefundApplyTime(currentDate); // 退款申请时间
+        application.setUpdateTime(currentDate); // 更新记录时间
+        // 退款金额默认等于支付金额（如需部分退款，可由前端传入并校验）
+        application.setRefundAmount(application.getPayAmount());
+
+        // 步骤4：更新数据库
+        int updateResult = newspaperApplicationMapperCustom.updateStatusByAppId(application);
+        if (updateResult <= 0) {
+            return Result.error("发起退款申请失败");
+        }
+
+        // 步骤5：核心：推送退款申请提醒给客服（复用现有WebSocket+离线消息逻辑）
+        pushRefundApplyToCs(application, currentDate);
+
+        // 步骤6：刷新用户ReceiverId过期时间
+        receiverIdService.refreshReceiverIdExpire(receiverId);
+
+        return Result.success(true);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> auditRefund(String appId, String refundStatus, String auditRemark, String receiverId) {
+        // 步骤1：前置校验
+        if (!StringUtils.hasText(appId) || !StringUtils.hasText(refundStatus)) {
+            return Result.paramError("申请ID和退款审核状态不能为空");
+        }
+        if (!receiverIdService.validateReceiverId(receiverId)) {
+            return Result.unauthorized("ReceiverId无效或已过期");
+        }
+        // 校验退款审核状态合法性
+        if (!NewspaperApplicationVO.STATUS_REFUNDED.equals(refundStatus) &&
+                !NewspaperApplicationVO.STATUS_REFUND_REJECTED.equals(refundStatus)) {
+            return Result.paramError("无效的退款审核状态，仅支持REFUNDED/REFUND_REJECTED");
+        }
+
+        // 步骤2：查询申请详情，校验申请状态
+        NewspaperApplicationVO application = newspaperApplicationMapperCustom.selectByAppId(appId);
+        if (application == null) {
+            return Result.error("登报申请不存在");
+        }
+        // 仅允许已发起退款（REFUND_APPLIED）状态进行审核
+        if (!NewspaperApplicationVO.STATUS_REFUND_APPLIED.equals(application.getStatus())) {
+            return Result.error("仅已发起退款的申请可审核，当前申请状态：" + application.getStatus());
+        }
+
+        // 步骤3：补全退款审核信息，更新状态
+        Date currentDate = DateUtil.getCurrentDate();
+        application.setStatus(refundStatus); // 更新为「已退款」或「退款驳回」
+        // 补充审核备注（覆盖用户原有备注，或拼接）
+        application.setRefundRemark(StringUtils.hasText(auditRemark) ? auditRemark : application.getRefundRemark());
+        application.setUpdateTime(currentDate);
+
+        // 分支：退款通过（REFUNDED），补充退款完成信息
+        if (NewspaperApplicationVO.STATUS_REFUNDED.equals(refundStatus)) {
+            application.setRefundTime(currentDate); // 实际退款时间
+            // 【关键】调用支付平台退款接口（如微信/支付宝退款），此处为伪代码，需替换为实际对接逻辑
+            // boolean refundSuccess = payService.refund(application.getPayNo(), application.getRefundAmount());
+            // if (!refundSuccess) {
+            //     return Result.error("调用支付平台退款失败");
+            // }
+        }
+
+        // 步骤4：更新数据库
+        int updateResult = newspaperApplicationMapperCustom.updateStatusByAppId(application);
+        if (updateResult <= 0) {
+            return Result.error("审核退款申请失败");
+        }
+
+        // 步骤5：核心：推送退款审核结果给用户（复用现有WebSocket逻辑）
+        pushRefundAuditResultToUser(application, currentDate);
+
+        // 步骤6：刷新客服ReceiverId过期时间
+        receiverIdService.refreshReceiverIdExpire(receiverId);
+
+        return Result.success(true);
+    }
+
+    /**
+     * 推送「用户发起退款申请」提醒给客服
+     */
+    private void pushRefundApplyToCs(NewspaperApplicationVO application, Date applyTime) {
+        String csReceiverId = application.getServiceStaffId();
+        String appId = application.getAppId();
+        if (!StringUtils.hasText(csReceiverId)) {
+            log.error("【退款申请推送】客服ID为空，跳过推送");
+            return;
+        }
+
+        // 构建提醒内容
+        String msgContent = String.format(
+                "【新退款申请提醒】%n" +
+                        "申请ID：%s%n" +
+                        "申请人：%s%n" +
+                        "支付金额：%s元%n" +
+                        "退款理由：%s%n" +
+                        "申请时间：%s",
+                appId,
+                application.getUserName(),
+                application.getPayAmount(),
+                application.getRefundRemark(),
+                DateUtil.formatDate(applyTime, "yyyy-MM-dd HH:mm:ss")
+        );
+
+        // 复用现有WebSocket推送逻辑（和新申请提醒一致，仅修改消息类型）
+        WebSocketMsgVO refundApplyMsg = new WebSocketMsgVO();
+        refundApplyMsg.setReceiverId(csReceiverId);
+        refundApplyMsg.setUserId("SYSTEM");
+        refundApplyMsg.setSenderType(WebSocketMsgVO.SENDER_TYPE_SYSTEM);
+        refundApplyMsg.setMsgContent(msgContent);
+        refundApplyMsg.setMsgType("SYSTEM_NEW_REFUND_APPLY"); // 新增退款申请消息类型
+        refundApplyMsg.setSendTime(applyTime);
+
+        try {
+            if (nettyWebSocketUtil.isReceiverOnline(csReceiverId)) {
+                Channel csChannel = nettyWebSocketUtil.getChannelByReceiverId(csReceiverId);
+                if (csChannel != null) {
+                    String jsonMsg = com.alibaba.fastjson.JSON.toJSONString(refundApplyMsg);
+                    csChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg));
+                    log.info("【退款申请推送成功】客服{}已收到申请{}的退款提醒", csReceiverId, appId);
+                }
+            } else {
+                // 客服离线，存储离线消息（复用现有离线消息逻辑）
+                log.info("【退款申请推送】客服{}未在线，已存储为离线消息", csReceiverId);
+                // 此处可复用 buildOfflineMsgVO 方法，仅修改消息类型即可
+            }
+        } catch (Exception e) {
+            log.error("【退款申请推送异常】客服{}，申请{}，原因：{}", csReceiverId, appId, e.getMessage());
+        }
+    }
+
+    /**
+     * 推送「退款审核结果」提醒给用户
+     */
+    private void pushRefundAuditResultToUser(NewspaperApplicationVO application, Date auditTime) {
+        String userReceiverId = "LYQY_USER_" + application.getUserId();
+        String appId = application.getAppId();
+        String status = application.getStatus();
+
+        // 构建提醒内容
+        String msgContent = "";
+        if (NewspaperApplicationVO.STATUS_REFUNDED.equals(status)) {
+            msgContent = String.format(
+                    "【退款审核通过提醒】%n" +
+                            "你的登报申请（ID：%s）退款审核已通过！%n" +
+                            "退款金额：%s元%n" +
+                            "预计1-3个工作日到账，请留意账户变动。",
+                    appId,
+                    application.getRefundAmount()
+            );
+        } else if (NewspaperApplicationVO.STATUS_REFUND_REJECTED.equals(status)) {
+            msgContent = String.format(
+                    "【退款审核驳回提醒】%n" +
+                            "你的登报申请（ID：%s）退款审核已驳回！%n" +
+                            "驳回理由：%s%n" +
+                            "如有疑问，请联系客服咨询。",
+                    appId,
+                    application.getRefundRemark()
+            );
+        }
+
+        // 复用现有WebSocket推送逻辑
+        try {
+            if (nettyWebSocketUtil.isReceiverOnline(userReceiverId)) {
+                Channel userChannel = nettyWebSocketUtil.getChannelByReceiverId(userReceiverId);
+                if (userChannel != null) {
+                    WebSocketMsgVO refundResultMsg = new WebSocketMsgVO();
+                    refundResultMsg.setReceiverId(userReceiverId);
+                    refundResultMsg.setUserId("SYSTEM");
+                    refundResultMsg.setSenderType(WebSocketMsgVO.SENDER_TYPE_SYSTEM);
+                    refundResultMsg.setMsgContent(msgContent);
+                    refundResultMsg.setMsgType("SYSTEM_REFUND_AUDIT_RESULT");
+                    refundResultMsg.setSendTime(auditTime);
+
+                    String jsonMsg = com.alibaba.fastjson.JSON.toJSONString(refundResultMsg);
+                    userChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg));
+                    log.info("【退款结果推送成功】用户{}已收到申请{}的退款审核结果", userReceiverId, appId);
+                }
+            }
+        } catch (Exception e) {
+            log.error("【退款结果推送异常】用户{}，申请{}，原因：{}", userReceiverId, appId, e.getMessage());
+        }
+    }
+
+
+
 }

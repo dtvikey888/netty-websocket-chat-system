@@ -230,4 +230,26 @@ public class NewspaperApplicationController {
     ) {
         return newspaperApplicationService.deleteApplication(appId, receiverId);
     }
+
+    @PostMapping("/refund/apply")
+    @ApiOperation("用户发起退款申请（仅已支付申请可发起）")
+    public Result<Boolean> applyRefund(
+            @ApiParam(value = "申请唯一标识appId", required = true) @RequestParam String appId,
+            @ApiParam(value = "退款申请理由", required = true) @RequestParam String refundRemark,
+            @ApiParam(value = "用户会话标识ReceiverId", required = true) @RequestHeader("ReceiverId") String receiverId
+    ) {
+        return newspaperApplicationService.applyRefund(appId, refundRemark, receiverId);
+    }
+
+    @PutMapping("/refund/audit")
+    @ApiOperation("客服审核退款申请（通过/驳回）")
+    public Result<Boolean> auditRefund(
+            @ApiParam(value = "申请唯一标识appId", required = true) @RequestParam String appId,
+            @ApiParam(value = "退款审核状态：REFUNDED（通过）/ REFUND_REJECTED（驳回）", required = true) @RequestParam String refundStatus,
+            @ApiParam(value = "退款审核备注（可选）") @RequestParam(required = false) String auditRemark,
+            @ApiParam(value = "客服会话标识ReceiverId", required = true) @RequestHeader("ReceiverId") String receiverId
+    ) {
+        return newspaperApplicationService.auditRefund(appId, refundStatus, auditRemark, receiverId);
+    }
+
 }

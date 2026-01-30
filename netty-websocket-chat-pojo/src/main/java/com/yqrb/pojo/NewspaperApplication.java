@@ -70,6 +70,9 @@ public class NewspaperApplication {
 
     /**
      * 状态：PENDING-待审核，AUDITED-已通过，PAID-已支付，REJECTED-已驳回
+     * REFUND_APPLIED 用户已发起退款申请，待客服审核（核心状态）
+     * REFUNDED 客服审核通过，退款操作已完成（核心状态，最终态）
+     * REFUND_REJECTED	客服审核驳回用户的退款申请（可选状态，优化体验）
      */
     private String status;
 

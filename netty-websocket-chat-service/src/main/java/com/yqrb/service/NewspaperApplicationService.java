@@ -31,4 +31,10 @@ public interface NewspaperApplicationService {
 
     // 删除登报申请（管理员接口）
     Result<Boolean> deleteApplication(String appId, String receiverId);
+
+    // 用户发起退款申请
+    Result<Boolean> applyRefund(String appId, String refundRemark, String receiverId);
+
+    // 客服审核退款申请
+    Result<Boolean> auditRefund(String appId, String refundStatus, String auditRemark, String receiverId);
 }
