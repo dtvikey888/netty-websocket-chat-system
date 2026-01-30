@@ -411,8 +411,13 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
         }
 
         // 若为支付状态，补全支付时间（常量前置，规避空指针）
+        /**
+         * 用户完成付款后，无需客服手动确认，而是由支付系统主动回调后端的支付结果通知接口，自动将申请状态标记为 PAID（已支付）；
+         * 而原有/audit接口中的PAID状态设置，仅作为兜底方案（比如支付回调失败、用户线下转账、支付系统异常等特殊场景），由客服手动补录状态，核心流程以自动回调为主。
+         */
         if (NewspaperApplicationVO.STATUS_PAID.equals(status)) {
             application.setPayTime(currentDate);
+
         }
 
         // 更新申请状态（含审核人设置的付款金额）
