@@ -1,6 +1,7 @@
 package com.yqrb.netty;
 
 import com.alibaba.fastjson.JSON;
+import com.yqrb.netty.constant.NettyConstant; // 新增：导入公共常量类
 import com.yqrb.pojo.vo.WebSocketMsgVO;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -11,7 +12,6 @@ import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
-import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 修复：调整URI解析时机，解决channelActive中URI为null的问题
- * 优化：统一日志、移除冗余操作、增强消息转发健壮性
+ * 优化：统一日志、移除冗余操作、增强消息转发健壮性、整合公共常量类
  */
 public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<WebSocketMsgVO> {
     // 注入SLF4J日志对象（统一日志风格）
@@ -30,7 +30,7 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
 
     private static final ChannelGroup ONLINE_CHANNELS = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
     public static final Map<String, Channel> RECEIVER_CHANNEL_MAP = new ConcurrentHashMap<>();
-    public static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("SESSION_ID");
+    // 移除：删除本地冗余的SESSION_ID_KEY定义，改用公共常量类中的定义
 
     // ===== 核心修复：不在channelActive中解析URI，改为首次接收消息时解析 =====
     @Override
@@ -68,7 +68,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             logger.warn("【客户端离线】通道ID：{}，未在RECEIVER_CHANNEL_MAP中找到对应记录", channelId);
         }
 
-        String sessionId = channel.attr(SESSION_ID_KEY).get();
+        // 修改：使用公共常量类中的SESSION_ID_KEY获取sessionId
+        String sessionId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
         logger.info("【客户端断开】通道ID：{}，sessionId：{}，在线人数：{}",
                 channelId,
                 (sessionId == null ? "未知" : sessionId),
@@ -82,7 +83,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             if (idleEvent.state() == IdleState.READER_IDLE) {
                 Channel channel = ctx.channel();
                 String channelId = channel.id().asShortText();
-                String sessionId = channel.attr(SESSION_ID_KEY).get();
+                // 修改：使用公共常量类中的SESSION_ID_KEY获取sessionId
+                String sessionId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
                 // 优化：替换System.out为SLF4J logger
                 logger.info("【客户端超时】通道ID：{}，sessionId：{}", channelId, (sessionId == null ? "未知" : sessionId));
                 channel.close();
@@ -96,7 +98,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
     protected void channelRead0(ChannelHandlerContext ctx, WebSocketMsgVO webSocketMsg) throws Exception {
         Channel currentChannel = ctx.channel();
         String channelId = currentChannel.id().asShortText();
-        String sessionId = currentChannel.attr(SESSION_ID_KEY).get();
+        // 修改：使用公共常量类中的SESSION_ID_KEY获取sessionId
+        String sessionId = currentChannel.attr(NettyConstant.SESSION_ID_KEY).get();
 
         // 使用SLF4J打印info级别日志，确认消息到达
         logger.info("=====================================");
@@ -105,7 +108,22 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
         logger.info("消息内容：{}", JSON.toJSONString(webSocketMsg));
         logger.info("=====================================");
 
-        // 已有sessionId（握手时已注册），直接处理消息
+        // 移除：删除重复的首次消息会话绑定逻辑（握手时已完成）
+        // 新增：首次接收消息，若未绑定sessionId则尝试从消息中提取并绑定（流程闭环关键）
+//        if (sessionId == null) {
+//            String newSessionId = webSocketMsg.getSessionId();
+//            String newReceiverId = webSocketMsg.getReceiverId();
+//            if (newSessionId != null && !newSessionId.trim().isEmpty()) {
+//                bindSessionInfo(ctx, newSessionId, newReceiverId);
+//                // 重新获取绑定后的sessionId
+//                sessionId = currentChannel.attr(NettyConstant.SESSION_ID_KEY).get();
+//            } else {
+//                logger.error("【消息处理失败】通道未注册会话ID，且消息中无有效会话参数，通道ID：{}", channelId);
+//                return;
+//            }
+//        }
+
+        // 已有sessionId（绑定成功），继续处理消息
         if (sessionId == null) {
             logger.error("【消息处理失败】通道未注册会话ID，通道ID：{}", channelId);
             return;
@@ -116,9 +134,6 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             logger.error("【消息处理失败】receiverId为空，通道ID：{}", channelId);
             return;
         }
-
-        // 优化：移除重复存入RECEIVER_CHANNEL_MAP的代码（握手时已存入，无需重复操作）
-        // 若需更新通道映射，可添加判断：if (!RECEIVER_CHANNEL_MAP.containsKey(receiverId)) {}
 
         // 后续receiverIdService注入完成后，替换为真实校验逻辑
         // boolean isValid = receiverIdService.isValid(receiverId);
@@ -136,7 +151,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             webSocketMsg.setSendTime(new Date());
         }
         if (webSocketMsg.getMsgType() == null) {
-            webSocketMsg.setMsgType("TEXT");
+            // 修改：使用WebSocketMsgVO中的常量，避免硬编码
+            webSocketMsg.setMsgType(WebSocketMsgVO.MSG_TYPE_TEXT);
         }
         webSocketMsg.setSessionId(sessionId);
 
@@ -153,7 +169,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         Channel channel = ctx.channel();
         String channelId = channel.id().asShortText();
-        String sessionId = channel.attr(SESSION_ID_KEY).get();
+        // 修改：使用公共常量类中的SESSION_ID_KEY获取sessionId
+        String sessionId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
         // 优化：替换System.err为SLF4J logger，打印完整异常堆栈
         logger.error("【通道异常】通道ID：{}，sessionId：{}，异常原因：{}",
                 channelId,
@@ -161,6 +178,35 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
                 cause.getMessage(),
                 cause);
         channel.close();
+    }
+
+    /**
+     * 新增：绑定会话信息到Channel（会话建立时调用，使用公共常量类）
+     * @param ctx 通道上下文
+     * @param sessionId 会话ID
+     * @param receiverId 接收者ID（客服/用户）
+     */
+    private void bindSessionInfo(ChannelHandlerContext ctx, String sessionId, String receiverId) {
+        Channel channel = ctx.channel();
+        // 1. 绑定sessionId到Channel属性（使用公共常量类）
+        channel.attr(NettyConstant.SESSION_ID_KEY).set(sessionId);
+        // 2. 绑定receiverId到Channel上下文（使用公共常量类）
+        channel.attr(NettyConstant.RECEIVER_ID_KEY).set(receiverId);
+        // 3. 绑定默认发送者类型（可选，补充完整）
+        channel.attr(NettyConstant.SENDER_TYPE_KEY).set(WebSocketMsgVO.SENDER_TYPE_USER);
+        // 4. 存入接收者-通道映射（高并发安全，先移除旧映射再新增）
+        if (receiverId != null && !receiverId.trim().isEmpty()) {
+            synchronized (RECEIVER_CHANNEL_MAP) {
+                // 移除该接收者对应的旧通道（避免重复映射）
+                RECEIVER_CHANNEL_MAP.remove(receiverId);
+                // 新增最新通道映射
+                RECEIVER_CHANNEL_MAP.put(receiverId, channel);
+            }
+            logger.info("【会话绑定成功】通道ID：{}，sessionId：{}，receiverId：{}",
+                    channel.id().asShortText(), sessionId, receiverId);
+        } else {
+            logger.error("【会话绑定失败】接收者ID为空，通道ID：{}", channel.id().asShortText());
+        }
     }
 
     /**

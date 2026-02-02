@@ -1,6 +1,7 @@
 package com.yqrb.netty;
 
 import com.alibaba.fastjson.JSON;
+import com.yqrb.netty.constant.NettyConstant;
 import com.yqrb.pojo.OfflineMsg;
 import com.yqrb.pojo.query.OfflineMsgQueryParam;
 import com.yqrb.pojo.vo.OfflineMsgVO;
@@ -138,7 +139,10 @@ public class NettyWebSocketServer {
                                                     csReceiverId = csReceiverId.split("\\?")[0];
                                                 }
                                                 // 注册到业务映射表，供后续消息转发使用
-                                                channel.attr(NettyWebSocketServerHandler.SESSION_ID_KEY).set(csReceiverId);
+                                                channel.attr(NettyConstant.SESSION_ID_KEY).set(csReceiverId);
+                                                channel.attr(NettyConstant.RECEIVER_ID_KEY).set(csReceiverId); // 新增：绑定receiverId，解决纯文本为空问题
+                                                channel.attr(NettyConstant.SENDER_TYPE_KEY).set(WebSocketMsgVO.SENDER_TYPE_CS); // 新增：绑定发送者类型为客服
+                                                channel.attr(NettyConstant.USER_ID_KEY).set(csReceiverId); // 新增：绑定userId，避免纯文本消息userId为null
                                                 NettyWebSocketServerHandler.RECEIVER_CHANNEL_MAP.put(csReceiverId, channel);
                                                 log.info("【会话注册成功】通道ID：{}，客服ID：{}，已加入在线映射表", channelId, csReceiverId);
                                                 // 新增：查询并推送该客服的离线消息
