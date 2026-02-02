@@ -87,7 +87,7 @@ public class NettyWebSocketServer {
                                             // 仅处理GET请求（WebSocket握手是GET请求）
                                             if (request.method().equals(io.netty.handler.codec.http.HttpMethod.GET)) {
                                                 String uri = request.uri();
-                                                ctx.channel().attr(CLIENT_WEBSOCKET_URI).set(uri);
+                                                ctx.channel().attr(NettyWebSocketServer.CLIENT_WEBSOCKET_URI).set(uri);
                                                 log.info("【URI捕获】通道ID：{}，URI：{}，请求类型：{}",
                                                         channelId, uri, msg.getClass().getSimpleName());
 
@@ -129,25 +129,48 @@ public class NettyWebSocketServer {
                                             String channelId = ctx.channel().id().asShortText();
                                             log.info("【协议升级】通道ID：{}，WebSocket握手成功", channelId);
 
-                                            // 解析纯净客服ID
+                                            // 解析纯净ID（通用化：支持用户/客服，不再限定为客服）
                                             Channel channel = ctx.channel();
                                             String uri = channel.attr(NettyWebSocketServer.CLIENT_WEBSOCKET_URI).get();
                                             if (uri != null && uri.startsWith(webSocketBasePath + "/")) {
-                                                String csReceiverId = uri.substring((webSocketBasePath + "/").length());
+                                                String receiverId = uri.substring((webSocketBasePath + "/").length());
                                                 // 去除查询参数，避免ID污染
-                                                if (csReceiverId.contains("?")) {
-                                                    csReceiverId = csReceiverId.split("\\?")[0];
+                                                if (receiverId.contains("?")) {
+                                                    receiverId = receiverId.split("\\?")[0];
                                                 }
+
+                                                // ======================================
+                                                // 核心修改：根据ID前缀区分用户/客服，绑定对应的senderType
+                                                // 约定：用户ID前缀 LYQY_USER_，客服ID前缀 LYQY_CS_
+                                                String senderType;
+                                                if (receiverId.startsWith("LYQY_USER_")) {
+                                                    // 用户连接：绑定为USER
+                                                    senderType = WebSocketMsgVO.SENDER_TYPE_USER;
+                                                } else if (receiverId.startsWith("LYQY_CS_")) {
+                                                    // 客服连接：绑定为CS
+                                                    senderType = WebSocketMsgVO.SENDER_TYPE_CS;
+                                                } else {
+                                                    // 默认：未知类型，绑定为USER（可根据业务调整）
+                                                    senderType = WebSocketMsgVO.SENDER_TYPE_USER;
+                                                    log.warn("【会话注册警告】通道ID：{}，ID前缀未匹配（非LYQY_USER_/LYQY_CS_），默认绑定为USER类型，ID：{}", channelId, receiverId);
+                                                }
+                                                // ======================================
+
                                                 // 注册到业务映射表，供后续消息转发使用
-                                                channel.attr(NettyConstant.SESSION_ID_KEY).set(csReceiverId);
-                                                channel.attr(NettyConstant.RECEIVER_ID_KEY).set(csReceiverId); // 新增：绑定receiverId，解决纯文本为空问题
-                                                channel.attr(NettyConstant.SENDER_TYPE_KEY).set(WebSocketMsgVO.SENDER_TYPE_CS); // 新增：绑定发送者类型为客服
-                                                channel.attr(NettyConstant.USER_ID_KEY).set(csReceiverId); // 新增：绑定userId，避免纯文本消息userId为null
-                                                NettyWebSocketServerHandler.RECEIVER_CHANNEL_MAP.put(csReceiverId, channel);
-                                                log.info("【会话注册成功】通道ID：{}，客服ID：{}，已加入在线映射表", channelId, csReceiverId);
-                                                // 新增：查询并推送该客服的离线消息
+                                                channel.attr(NettyConstant.SESSION_ID_KEY).set(receiverId);
+                                                channel.attr(NettyConstant.RECEIVER_ID_KEY).set(receiverId);
+                                                // 替换原来的强制CS绑定，使用区分后的senderType
+                                                channel.attr(NettyConstant.SENDER_TYPE_KEY).set(senderType);
+                                                channel.attr(NettyConstant.USER_ID_KEY).set(receiverId);
+                                                NettyWebSocketServerHandler.RECEIVER_CHANNEL_MAP.put(receiverId, channel);
+
+                                                // 优化日志：打印连接类型
+                                                log.info("【会话注册成功】通道ID：{}，ID：{}，连接类型：{}，已加入在线映射表",
+                                                        channelId, receiverId, senderType);
+
+                                                // 新增：查询并推送该ID的离线消息（兼容用户/客服，保留原有逻辑）
                                                 OfflineMsgQueryParam queryParam = new OfflineMsgQueryParam();
-                                                queryParam.setServiceStaffId(csReceiverId);
+                                                queryParam.setServiceStaffId(receiverId);
                                                 queryParam.setIsPushed(0);
                                                 List<OfflineMsgVO> offlineMsgList = offlineMsgService.getOfflineMsgList(queryParam);
 
@@ -161,8 +184,9 @@ public class NettyWebSocketServer {
                                                         channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(wsMsg)));
                                                     }
                                                     // 标记为已推送
-                                                    offlineMsgService.markOfflineMsgAsPushed(csReceiverId);
-                                                    log.info("【离线消息补偿推送成功】客服：{}，共推送{}条离线消息", csReceiverId, offlineMsgList.size());
+                                                    offlineMsgService.markOfflineMsgAsPushed(receiverId);
+                                                    log.info("【离线消息补偿推送成功】ID：{}，连接类型：{}，共推送{}条离线消息",
+                                                            receiverId, senderType, offlineMsgList.size());
                                                 }
                                             } else {
                                                 log.error("【会话注册失败】通道ID：{}，URI格式错误：{}", channelId, uri);

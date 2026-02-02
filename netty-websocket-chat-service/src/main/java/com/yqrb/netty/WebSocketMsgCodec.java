@@ -2,14 +2,14 @@ package com.yqrb.netty;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONException;
-import com.yqrb.netty.constant.NettyConstant; // 新增：导入全局常量类
+import com.yqrb.netty.constant.NettyConstant;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageCodec;
 import io.netty.handler.codec.http.websocketx.*;
-import org.slf4j.Logger; // 新增：SLF4J日志导入
-import org.slf4j.LoggerFactory; // 新增：SLF4J日志导入
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
@@ -18,12 +18,11 @@ import java.util.List;
 /**
  * WebSocket消息编解码器（实现WebSocketMsg与WebSocketFrame的相互转换）
  * 优化：同时支持标准JSON消息和纯文本消息，补全纯文本消息核心业务字段，整合全局常量类
+ * 新增：纯文本消息支持「receiverId:xxx|sessionId:xxx|真实消息」格式，兼容旧格式
  */
 public class WebSocketMsgCodec extends MessageToMessageCodec<WebSocketFrame, WebSocketMsgVO> {
     // 新增：使用SLF4J日志，与处理器保持一致
     private static final Logger logger = LoggerFactory.getLogger(WebSocketMsgCodec.class);
-
-    // 移除：删除本地自定义的AttributeKey，改用NettyConstant中的全局常量
 
     /**
      * 解码：将WebSocketFrame转换为WebSocketMsgVO（兼容JSON和纯文本，补全核心字段）
@@ -31,14 +30,12 @@ public class WebSocketMsgCodec extends MessageToMessageCodec<WebSocketFrame, Web
     @Override
     protected void decode(ChannelHandlerContext ctx, WebSocketFrame frame, List<Object> out) throws Exception {
         String clientId = ctx.channel().id().asShortText();
-        // 修改：替换System.out为SLF4J日志
         logger.info("【编解码器】客户端{}发送了帧类型：{}", clientId, frame.getClass().getSimpleName());
 
         try {
             // 1. 处理文本帧（核心业务帧：JSON + 纯文本）
             if (frame instanceof TextWebSocketFrame) {
                 String msgContent = ((TextWebSocketFrame) frame).text();
-                // 修改：替换System.out为SLF4J日志
                 logger.info("【解码】客户端{}发送文本帧：{}", clientId, msgContent);
 
                 WebSocketMsgVO webSocketMsg = null;
@@ -46,27 +43,58 @@ public class WebSocketMsgCodec extends MessageToMessageCodec<WebSocketFrame, Web
                     // 第一步：尝试按JSON格式解析（兼容原有标准JSON消息）
                     webSocketMsg = JSON.parseObject(msgContent, WebSocketMsgVO.class);
                 } catch (JSONException e) {
-                    // 第二步：JSON解析失败，判定为纯文本消息，手动封装WebSocketMsgVO（补全核心字段）
+                    // 第二步：JSON解析失败，判定为纯文本消息，手动封装WebSocketMsgVO
                     logger.info("【解码】客户端{}发送的是纯文本消息，手动封装VO", clientId);
                     webSocketMsg = new WebSocketMsgVO();
 
-                    // 修改：使用NettyConstant全局常量，从Channel上下文获取绑定的业务字段
-                    String receiverId = ctx.channel().attr(NettyConstant.RECEIVER_ID_KEY).get();
-                    String sessionId = ctx.channel().attr(NettyConstant.SESSION_ID_KEY).get();
+                    // ======================================
+                    // 核心升级：解析「接收者ID + 自定义sessionId + 真实消息」格式，兼容旧格式
+                    // 新格式：receiverId:xxx|sessionId:xxx|真实消息
+                    // 旧格式：receiverId:xxx|真实消息（兼容，无sessionId时用通道自身ID兜底）
+                    String targetReceiverId = null;
+                    String customSessionId = null; // 解析到的自定义sessionId
+                    String realMsgContent = msgContent; // 最终要展示的真实消息内容
+
+                    if (msgContent.contains("|")) {
+                        // 分割为最多3部分，保留消息内容中的「|」（用户输入不受影响）
+                        String[] msgParts = msgContent.split("\\|", 3);
+
+                        // 先处理新格式（3部分，包含sessionId）
+                        if (msgParts.length >= 3
+                                && msgParts[0].startsWith("receiverId:")
+                                && msgParts[1].startsWith("sessionId:")) {
+                            // 提取目标接收者ID
+                            targetReceiverId = msgParts[0].substring("receiverId:".length()).trim();
+                            // 提取自定义sessionId（核心：保留全局会话ID）
+                            customSessionId = msgParts[1].substring("sessionId:".length()).trim();
+                            // 提取真实消息内容
+                            realMsgContent = msgParts[2].trim();
+                        } else if (msgParts.length >= 2 && msgParts[0].startsWith("receiverId:")) {
+                            // 兼容旧格式（2部分，无sessionId）
+                            targetReceiverId = msgParts[0].substring("receiverId:".length()).trim();
+                            realMsgContent = msgParts[1].trim();
+                            logger.warn("【解码】客户端{}使用旧格式纯文本，无自定义sessionId，将用通道自身ID兜底", clientId);
+                        }
+                    }
+                    // ======================================
+
+                    // 从Channel上下文获取发送者自身信息（仅用于兜底）
+                    String channelSelfId = ctx.channel().attr(NettyConstant.SESSION_ID_KEY).get();
                     String senderType = ctx.channel().attr(NettyConstant.SENDER_TYPE_KEY).get();
                     String userId = ctx.channel().attr(NettyConstant.USER_ID_KEY).get();
 
-                    // 填充纯文本消息的完整字段（解决receiverId为空问题）
-                    webSocketMsg.setMsgContent(msgContent); // 纯文本内容
-                    webSocketMsg.setMsgType(WebSocketMsgVO.MSG_TYPE_TEXT); // 文本消息类型
-                    webSocketMsg.setSendTime(new Date()); // 发送时间（当前时间）
-                    webSocketMsg.setReceiverId(receiverId); // 补全接收者ID（核心：解决为空报错）
-                    webSocketMsg.setSessionId(sessionId); // 补全会话ID（保持业务数据完整）
-                    webSocketMsg.setSenderType(senderType != null ? senderType : WebSocketMsgVO.SENDER_TYPE_USER); // 补全发送者类型（默认用户）
-                    webSocketMsg.setUserId(userId != null ? userId : sessionId); // 优化：userId为空时，用sessionId兜底（避免null）
+                    // 填充纯文本消息完整字段（优先使用解析到的自定义值，无则兜底）
+                    webSocketMsg.setMsgContent(realMsgContent);
+                    webSocketMsg.setMsgType(WebSocketMsgVO.MSG_TYPE_TEXT);
+                    webSocketMsg.setSendTime(new Date());
+                    webSocketMsg.setReceiverId(targetReceiverId);
+                    // 关键：sessionId优先用自定义，无则用通道自身ID
+                    webSocketMsg.setSessionId(customSessionId != null ? customSessionId : channelSelfId);
+                    webSocketMsg.setSenderType(senderType != null ? senderType : WebSocketMsgVO.SENDER_TYPE_USER);
+                    webSocketMsg.setUserId(userId != null ? userId : channelSelfId);
                 }
 
-                // 无论JSON还是纯文本，最终将VO加入输出列表，传递给后续业务处理器
+                // 无论JSON还是纯文本，传递给后续业务处理器
                 if (webSocketMsg != null) {
                     out.add(webSocketMsg);
                 }
