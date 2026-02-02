@@ -7,7 +7,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 /**
- * @ClassName $ {NAME}
+ * @ClassName CorsConfig
  * @Description 跨域配置类：解决前后端分离场景下的跨域请求问题
  * @Author fjw
  * @Date 2020/2/5 3:11 PM
@@ -16,79 +16,38 @@ import org.springframework.web.filter.CorsFilter;
 @Configuration
 public class CorsConfig {
 
-
-
-//    public CorsConfig() {
-//
-//    }
-
-//    private CorsConfiguration buildConfig() {
-//        CorsConfiguration config = new CorsConfiguration();
-//        config.addAllowedOrigin("http://localhost:8080");
-//        config.addAllowedOrigin("http://s.txy.yqrb.com.cn");
-//        config.addAllowedOrigin("http://admin.txy.yqrb.com.cn");
-//        config.addAllowedOrigin("http://www.yqrb.com.cn:8080");
-//        config.addAllowedOrigin("http://admin.yqrb.com.cn:8080");
-//        config.addAllowedOrigin("http://s.yqrb.com.cn:8080");
-//        config.addAllowedOrigin("http://img.yqrb.com.cn:8080");
-//        config.addAllowedOrigin("http://www.yqrb.com.cn");
-//        config.addAllowedOrigin("http://admin.yqrb.com.cn");
-//        config.addAllowedOrigin("http://s.yqrb.com.cn");
-//        config.addAllowedOrigin("http://img.yqrb.com.cn");
-//
-//        //设置是否发送cookie信息
-//        config.setAllowCredentials(true);
-//        //设置允许请求的方式
-//        config.addAllowedMethod("*");
-//        //设置允许的header
-//        config.addAllowedHeader("*");
-//        return config;
-//    }
-
     private CorsConfiguration buildConfig() {
         CorsConfiguration corsConfiguration = new CorsConfiguration();
-        // 允许所有来源跨域（开发环境便捷配置，生产环境可替换为指定域名，如"http://admin.yqrb.com.cn"）
-        corsConfiguration.addAllowedOrigin("*");
-        // 允许所有请求头
+        // 修复核心：替换通配符*为具体前端域名，支持多个域名（按需添加）
+        // 1. 你的Canvas前端预览地址（必须添加，解决当前跨域问题）
+        corsConfiguration.addAllowedOrigin("http://localhost:5500");
+        // 2. 你的业务域名（保留你原有项目的合法域名，按需启用/添加）
+        corsConfiguration.addAllowedOrigin("http://localhost:8088");
+        corsConfiguration.addAllowedOrigin("http://s.txy.yqrb.com.cn");
+        corsConfiguration.addAllowedOrigin("http://admin.txy.yqrb.com.cn");
+        corsConfiguration.addAllowedOrigin("http://www.yqrb.com.cn");
+        corsConfiguration.addAllowedOrigin("http://admin.yqrb.com.cn");
+        corsConfiguration.addAllowedOrigin("http://s.yqrb.com.cn");
+        corsConfiguration.addAllowedOrigin("http://img.yqrb.com.cn");
+
+        // 允许所有请求头（包含你的自定义头ReceiverId、Request-Id）
         corsConfiguration.addAllowedHeader("*");
-        // 允许所有请求方法（GET、POST、PUT、DELETE等）
+        // 允许所有请求方法（GET、POST、PUT、DELETE等，适配你的提交接口POST请求）
         corsConfiguration.addAllowedMethod("*");
-        // 允许携带Cookie（跨域请求需同步Cookie时启用）
-        corsConfiguration.setAllowCredentials(true);//这两句不加不能跨域上传文件
-        // 预检请求缓存时间（3600秒），减少重复预检请求
-        corsConfiguration.setMaxAge(3600L);//加上去就可以了
+        // 允许携带Cookie（对应前端fetch的credentials: "include"，必须启用）
+        corsConfiguration.setAllowCredentials(true);
+        // 预检请求缓存时间（3600秒），减少重复预检请求，提升性能
+        corsConfiguration.setMaxAge(3600L);
         return corsConfiguration;
     }
 
     @Bean
     public CorsFilter corsFilter(){
-        //1. 添加cros配置信息
-//        CorsConfiguration config = new CorsConfiguration();
-//        config.addAllowedOrigin("http://localhost:8080");
-//        config.addAllowedOrigin("http://s.txy.yqrb.com.cn");
-//        config.addAllowedOrigin("http://admin.txy.yqrb.com.cn");
-//        config.addAllowedOrigin("http://www.yqrb.com.cn:8080");
-//        config.addAllowedOrigin("http://admin.yqrb.com.cn:8080");
-//        config.addAllowedOrigin("http://s.yqrb.com.cn:8080");
-//        config.addAllowedOrigin("http://img.yqrb.com.cn:8080");
-//        config.addAllowedOrigin("http://www.yqrb.com.cn");
-//        config.addAllowedOrigin("http://admin.yqrb.com.cn");
-//        config.addAllowedOrigin("http://s.yqrb.com.cn");
-//        config.addAllowedOrigin("http://img.yqrb.com.cn");
-//
-//        //设置是否发送cookie信息
-//        config.setAllowCredentials(true);
-//        //设置允许请求的方式
-//        config.addAllowedMethod("*");
-//        //设置允许的header
-//        config.addAllowedHeader("*");
-        //2.为url添加映射路径、为所有URL注册跨域配置
+        // 为URL添加映射路径，注册跨域配置
         UrlBasedCorsConfigurationSource corsSource = new UrlBasedCorsConfigurationSource();
-        //corsSource.registerCorsConfiguration("/**",config);// 对接口配置跨域设置
-        corsSource.registerCorsConfiguration("/**",buildConfig());// 对接口配置跨域设置
-        //3.返回重新定义好的corsSource
+        // 对所有接口路径（/**）应用跨域配置规则
+        corsSource.registerCorsConfiguration("/**",buildConfig());
+        // 返回跨域过滤器，交由Spring容器管理
         return new CorsFilter(corsSource);
     }
-
-
 }

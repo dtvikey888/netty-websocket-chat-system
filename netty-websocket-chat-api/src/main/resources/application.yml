@@ -88,7 +88,7 @@ custom:
   receiver:
     session:
       expire-seconds: 86400
-      prefix:
+      prefix: "newspaper:session:receiverId:"
       session:receiver:
       offline-msg-prefix:
       offline:msg:
