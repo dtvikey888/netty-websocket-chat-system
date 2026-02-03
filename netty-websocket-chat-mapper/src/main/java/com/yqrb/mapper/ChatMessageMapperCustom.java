@@ -9,7 +9,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 public interface ChatMessageMapperCustom {
-
     // 保存聊天消息
     @Insert("INSERT INTO chat_message (msg_id, sender_id, sender_type, receiver_id, content, " +
             "msg_type, scene_tag, session_id, send_time, is_read, create_time) " +
