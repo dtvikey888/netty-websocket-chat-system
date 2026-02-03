@@ -15,8 +15,10 @@ public class ChatMessageVO {
     private String senderId; // 发送者ID
     private String senderType; // 发送者类型 USER-用户，CS-客服，SYSTEM-系统
     private String receiverId; // 接收者ID
+    private String attachmentPath; // 附件路径（多张用逗号分隔，存储对象存储地址）
     private String content; // 消息内容
     private String msgType; // 消息类型 TEXT-文本，PAY_REMIND-付款提醒，SYSTEM_TIP-系统提示
+    private String sceneTag; // 场景标签：PRE_SALE-售前咨询，AFTER_SALE-售后客服，SYSTEM-系统消息
     private String sessionId; // 会话ID
     private Date sendTime; // 发送时间
     private Integer isRead; // 是否已读 0-未读 1-已读
@@ -33,4 +35,9 @@ public class ChatMessageVO {
 
     public static final Integer IS_READ_NO = 0; // 未读
     public static final Integer IS_READ_YES = 1; // 已读
+
+    // 新增：sceneTag 对应的枚举常量，与字段注释保持一致
+    public static final String SCENE_TAG_PRE_SALE = "PRE_SALE"; // 售前咨询
+    public static final String SCENE_TAG_AFTER_SALE = "AFTER_SALE"; // 售后客服
+    public static final String SCENE_TAG_SYSTEM = "SYSTEM"; // 系统消息
 }

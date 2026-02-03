@@ -38,13 +38,25 @@ public class ChatMessage {
     private String receiverId;
 
     /**
+     * 附件路径（多张用逗号分隔，存储对象存储地址）
+     */
+    @Column(name = "attachment_path")
+    private String attachmentPath;
+
+    /**
      * 消息类型：TEXT-文本，PAY_REMIND-付款提醒，SYSTEM_TIP-系统提示
      */
     @Column(name = "msg_type")
     private String msgType;
 
     /**
-     * 会话ID（关联app_id）
+     * 场景标签：PRE_SALE-售前咨询，AFTER_SALE-售后客服，SYSTEM-系统消息
+     */
+    @Column(name = "scene_tag")
+    private String sceneTag;
+
+    /**
+     * 会话唯一标识（关联session_mapping表的session_id，用于绑定登报申请app_id）
      */
     @Column(name = "session_id")
     private String sessionId;
@@ -163,6 +175,24 @@ public class ChatMessage {
     }
 
     /**
+     * 获取附件路径（多张用逗号分隔，存储对象存储地址）
+     *
+     * @return attachment_path - 附件路径（多张用逗号分隔，存储对象存储地址）
+     */
+    public String getAttachmentPath() {
+        return attachmentPath;
+    }
+
+    /**
+     * 设置附件路径（多张用逗号分隔，存储对象存储地址）
+     *
+     * @param attachmentPath 附件路径（多张用逗号分隔，存储对象存储地址）
+     */
+    public void setAttachmentPath(String attachmentPath) {
+        this.attachmentPath = attachmentPath;
+    }
+
+    /**
      * 获取消息类型：TEXT-文本，PAY_REMIND-付款提醒，SYSTEM_TIP-系统提示
      *
      * @return msg_type - 消息类型：TEXT-文本，PAY_REMIND-付款提醒，SYSTEM_TIP-系统提示
@@ -181,18 +211,36 @@ public class ChatMessage {
     }
 
     /**
-     * 获取会话ID（关联app_id）
+     * 获取场景标签：PRE_SALE-售前咨询，AFTER_SALE-售后客服，SYSTEM-系统消息
      *
-     * @return session_id - 会话ID（关联app_id）
+     * @return scene_tag - 场景标签：PRE_SALE-售前咨询，AFTER_SALE-售后客服，SYSTEM-系统消息
+     */
+    public String getSceneTag() {
+        return sceneTag;
+    }
+
+    /**
+     * 设置场景标签：PRE_SALE-售前咨询，AFTER_SALE-售后客服，SYSTEM-系统消息
+     *
+     * @param sceneTag 场景标签：PRE_SALE-售前咨询，AFTER_SALE-售后客服，SYSTEM-系统消息
+     */
+    public void setSceneTag(String sceneTag) {
+        this.sceneTag = sceneTag;
+    }
+
+    /**
+     * 获取会话唯一标识（关联session_mapping表的session_id，用于绑定登报申请app_id）
+     *
+     * @return session_id - 会话唯一标识（关联session_mapping表的session_id，用于绑定登报申请app_id）
      */
     public String getSessionId() {
         return sessionId;
     }
 
     /**
-     * 设置会话ID（关联app_id）
+     * 设置会话唯一标识（关联session_mapping表的session_id，用于绑定登报申请app_id）
      *
-     * @param sessionId 会话ID（关联app_id）
+     * @param sessionId 会话唯一标识（关联session_mapping表的session_id，用于绑定登报申请app_id）
      */
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;

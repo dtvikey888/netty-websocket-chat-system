@@ -1,20 +1,22 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
 <mapper namespace="com.yqrb.mapper.ChatMessageMapper" >
-  <resultMap id="BaseResultMap" type="com.yqrb.pojo.ChatMessage" >
-    <!--
-      WARNING - @mbg.generated
-    -->
-    <id column="id" property="id" jdbcType="BIGINT" />
-    <result column="msg_id" property="msgId" jdbcType="VARCHAR" />
-    <result column="sender_id" property="senderId" jdbcType="VARCHAR" />
-    <result column="sender_type" property="senderType" jdbcType="VARCHAR" />
-    <result column="receiver_id" property="receiverId" jdbcType="VARCHAR" />
-    <result column="msg_type" property="msgType" jdbcType="VARCHAR" />
-    <result column="session_id" property="sessionId" jdbcType="VARCHAR" />
-    <result column="send_time" property="sendTime" jdbcType="TIMESTAMP" />
-    <result column="is_read" property="isRead" jdbcType="BIT" />
-    <result column="create_time" property="createTime" jdbcType="TIMESTAMP" />
-    <result column="content" property="content" jdbcType="LONGVARCHAR" />
-  </resultMap>
+    <resultMap id="BaseResultMap" type="com.yqrb.pojo.ChatMessage" >
+        <!--
+          WARNING - @mbg.generated
+        -->
+        <id column="id" property="id" jdbcType="BIGINT" />
+        <result column="msg_id" property="msgId" jdbcType="VARCHAR" />
+        <result column="sender_id" property="senderId" jdbcType="VARCHAR" />
+        <result column="sender_type" property="senderType" jdbcType="VARCHAR" />
+        <result column="receiver_id" property="receiverId" jdbcType="VARCHAR" />
+        <result column="attachment_path" property="attachmentPath" jdbcType="VARCHAR" />
+        <result column="msg_type" property="msgType" jdbcType="VARCHAR" />
+        <result column="scene_tag" property="sceneTag" jdbcType="VARCHAR" />
+        <result column="session_id" property="sessionId" jdbcType="VARCHAR" />
+        <result column="send_time" property="sendTime" jdbcType="TIMESTAMP" />
+        <result column="is_read" property="isRead" jdbcType="BIT" />
+        <result column="create_time" property="createTime" jdbcType="TIMESTAMP" />
+        <result column="content" property="content" jdbcType="LONGVARCHAR" />
+    </resultMap>
 </mapper>
