@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yqrb.mapper.PreSaleChatMessageMapper">
+
+    <!-- 结果集映射（PO与数据库表字段对应） -->
+    <resultMap id="PreSaleChatMessageResultMap" type="com.yqrb.pojo.po.PreSaleChatMessagePO">
+        <id column="id" property="id"/>
+        <result column="msg_id" property="msgId"/>
+        <result column="sender_id" property="senderId"/>
+        <result column="sender_type" property="senderType"/>
+        <result column="receiver_id" property="receiverId"/>
+        <result column="content" property="content"/>
+        <result column="msg_type" property="msgType"/>
+        <result column="attachment_path" property="attachmentPath"/>
+        <result column="pre_sale_session_id" property="preSaleSessionId"/>
+        <result column="send_time" property="sendTime"/>
+        <result column="is_read" property="isRead"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <!-- 插入售前消息 -->
+    <insert id="insertPreSaleChatMessage" parameterType="com.yqrb.pojo.po.PreSaleChatMessagePO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO pre_sale_chat_message (
+            msg_id,
+            sender_id,
+            sender_type,
+            receiver_id,
+            content,
+            msg_type,
+            attachment_path,
+            pre_sale_session_id,
+            send_time,
+            is_read
+        ) VALUES (
+                     #{msgId},
+                     #{senderId},
+                     #{senderType},
+                     #{receiverId},
+                     #{content},
+                     #{msgType},
+                     #{attachmentPath},
+                     #{preSaleSessionId},
+                     #{sendTime},
+                     #{isRead}
+                 )
+    </insert>
+
+    <!-- 按售前会话ID查询消息 -->
+    <select id="listByPreSaleSessionId" parameterType="String" resultMap="PreSaleChatMessageResultMap">
+        SELECT * FROM pre_sale_chat_message
+        WHERE pre_sale_session_id = #{preSaleSessionId}
+        ORDER BY send_time ASC
+    </select>
+
+    <!-- 按用户ID查询消息 -->
+    <select id="listByUserId" parameterType="String" resultMap="PreSaleChatMessageResultMap">
+        SELECT * FROM pre_sale_chat_message
+        WHERE sender_id = #{userId}
+        ORDER BY send_time DESC
+    </select>
+
+    <!-- 清理过期售前消息：关键修复：用<![CDATA[ ]]>包裹包含特殊字符的SQL -->
+    <delete id="deleteExpiredPreSaleChatMessage" parameterType="Date">
+        <![CDATA[
+        DELETE FROM pre_sale_chat_message
+        WHERE send_time < #{expireTime}
+        ]]>
+    </delete>
+
+</mapper>

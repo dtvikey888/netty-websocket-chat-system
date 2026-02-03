@@ -28,6 +28,7 @@ public class Result<T> {
         return new Result<>(200, "操作成功", data);
     }
 
+
     // 操作失败
     public static <T> Result<T> error(String msg) {
         return new Result<>(500, msg, null);
