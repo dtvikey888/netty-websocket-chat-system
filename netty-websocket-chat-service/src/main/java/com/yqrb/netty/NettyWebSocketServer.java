@@ -31,6 +31,21 @@ import javax.annotation.PreDestroy;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 用户/客服 → 连接/newspaper/websocket?携带标识（chatType=PRE_SALE+preSaleSessionId+userId/csId）→ Netty WebSocket服务器
+ * → 解析标识，区分「售前/售后」→ 售前消息 → 调用PreSaleChatMessageService → 存入pre_sale_chat_message表 → 实时推送给对应接收方（机器人/专属客服/用户）
+ * → 售后消息 → 沿用现有逻辑 → 存入chat_message表 + session_mapping表
+ * 1. 用户侧连接 WebSocket（售前咨询） 前端连接 URL 示例（携带售前标识、售前会话 ID、用户 ID）：
+ * chatType=PRE_SALE：核心标识，告诉 WebSocket 服务器这是售前咨询连接（售后可传chatType=AFTER_SALE，不传默认按售后处理）；
+ * preSaleSessionId：售前专属会话 ID（前端调用之前的/api/pre-sale/chat/generate-session-id接口获取）；
+ * userId：用户 ID（与售前表的senderId对应，用于存储记录）。
+ * ws://localhost:8088/newspaper/websocket?chatType=PRE_SALE&preSaleSessionId=PRE_SESSION_3e8a7c9d4b5f467a890abcdef12345678&userId=LYQY_USER_5fbb6357b77d2e6436a46336
+ * 2. 售前客服侧连接 WebSocket（人工对接） 前端连接 URL 示例（携带售前标识、客服 ID）：
+ * chatType=PRE_SALE：标识售前连接；
+ * csId：客服 ID（用于绑定用户会话，推送用户消息给对应客服）。
+ * ws://localhost:8088/newspaper/websocket?chatType=PRE_SALE&csId=LYQY_CS_5fc5bff4b77d2e6436a618aa
+ *
+ */
 @Component
 public class NettyWebSocketServer {
     private static final Logger log = LoggerFactory.getLogger(NettyWebSocketServer.class);
