@@ -60,7 +60,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         chatMessage.setSendTime(webSocketMsg.getSendTime() == null ? DateUtil.getCurrentDate() : webSocketMsg.getSendTime());
         chatMessage.setIsRead(ChatMessageVO.IS_READ_NO);
         chatMessage.setCreateTime(DateUtil.getCurrentDate());
-
         // 4. 保存消息到数据库
         int insertResult = chatMessageMapperCustom.insertChatMessage(chatMessage);
         if (insertResult <= 0) {
