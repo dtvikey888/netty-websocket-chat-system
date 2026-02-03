@@ -56,7 +56,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         chatMessage.setReceiverId(webSocketMsg.getReceiverId());
         chatMessage.setContent(webSocketMsg.getMsgContent());
         chatMessage.setMsgType(webSocketMsg.getMsgType() == null ? ChatMessageVO.MSG_TYPE_TEXT : webSocketMsg.getMsgType());
-        chatMessage.setSceneTag(ChatMessageVO.SCENE_TAG_AFTER_SALE);
         chatMessage.setSessionId(webSocketMsg.getSessionId());
         chatMessage.setSendTime(webSocketMsg.getSendTime() == null ? DateUtil.getCurrentDate() : webSocketMsg.getSendTime());
         chatMessage.setIsRead(ChatMessageVO.IS_READ_NO);

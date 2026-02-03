@@ -37,23 +37,12 @@ public class ChatMessage {
     @Column(name = "receiver_id")
     private String receiverId;
 
-    /**
-     * 附件路径（多张用逗号分隔，存储对象存储地址）
-     */
-    @Column(name = "attachment_path")
-    private String attachmentPath;
 
     /**
      * 消息类型：TEXT-文本，PAY_REMIND-付款提醒，SYSTEM_TIP-系统提示
      */
     @Column(name = "msg_type")
     private String msgType;
-
-    /**
-     * 场景标签：PRE_SALE-售前咨询，AFTER_SALE-售后客服，SYSTEM-系统消息
-     */
-    @Column(name = "scene_tag")
-    private String sceneTag;
 
     /**
      * 会话唯一标识（关联session_mapping表的session_id，用于绑定登报申请app_id）

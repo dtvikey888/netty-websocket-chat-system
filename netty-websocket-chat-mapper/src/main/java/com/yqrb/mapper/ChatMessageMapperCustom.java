@@ -10,9 +10,9 @@ public interface ChatMessageMapperCustom {
 
     // 保存聊天消息
     @Insert("INSERT INTO chat_message (msg_id, sender_id, sender_type, receiver_id, content, " +
-            "msg_type, scene_tag, session_id, send_time, is_read, create_time) " +
+            "msg_type, session_id, send_time, is_read, create_time) " +
             "VALUES (#{msgId}, #{senderId}, #{senderType}, #{receiverId}, #{content}, " +
-            "#{msgType}, #{sceneTag}, #{sessionId}, #{sendTime}, #{isRead}, #{createTime})")
+            "#{msgType}, #{sessionId}, #{sendTime}, #{isRead}, #{createTime})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insertChatMessage(ChatMessageVO chatMessage);
 
