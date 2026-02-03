@@ -22,7 +22,6 @@ public class ChatMessageVO {
     private Date sendTime; // 发送时间
     private Integer isRead; // 是否已读 0-未读 1-已读
     private Date createTime; // 创建时间
-
     // 枚举常量
     public static final String SENDER_TYPE_USER = "USER"; // 普通用户
     public static final String SENDER_TYPE_CS = "CS"; // 客服
