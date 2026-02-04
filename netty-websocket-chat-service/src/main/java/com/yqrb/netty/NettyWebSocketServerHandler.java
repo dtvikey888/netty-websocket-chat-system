@@ -96,7 +96,6 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
 
     // 2. 在`channelRead0`方法中，补全消息默认值后、调用`forwardMessage`前，添加持久化代码
     @Override
-
     protected void channelRead0(ChannelHandlerContext ctx, WebSocketMsgVO webSocketMsg) throws Exception {
         Channel currentChannel = ctx.channel();
         String channelId = currentChannel.id().asShortText();
