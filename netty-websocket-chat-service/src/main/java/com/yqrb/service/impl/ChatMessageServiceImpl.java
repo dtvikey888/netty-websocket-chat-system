@@ -184,10 +184,20 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             return Result.paramError("会话ID（sessionId）不能为空");
         }
 
+        String result;
+        // 先判断是否以目标前缀开头，再截取
+        if (receiverId.startsWith("R_FIXED_0000_")) {
+            result = receiverId.substring("R_FIXED_0000_".length());
+        } else {
+            result = receiverId; // 不满足前缀，直接返回原字符串
+        }
+        // 用截取后的无前缀 ID 执行数据库查询
         // 3. 调用Mapper批量更新未读消息为已读（仅更新is_read=0的记录）
-        int updateResult = chatMessageMapperCustom.batchUpdateMsgReadStatusBySessionId(sessionId, receiverId);
+//        int updateResult = chatMessageMapperCustom.batchUpdateMsgReadStatusBySessionId(sessionId, receiverId);
+        int updateResult = chatMessageMapperCustom.batchUpdateMsgReadStatusBySessionId(sessionId, result);
         if (updateResult <= 0) {
-            log.info("【批量标记已读】无未读消息需要更新，会话ID：{}，接收者：{}", sessionId, receiverId);
+//            log.info("【批量标记已读】无未读消息需要更新，会话ID：{}，接收者：{}", sessionId, receiverId);
+            log.info("【批量标记已读】无未读消息需要更新，会话ID：{}，接收者：{}", sessionId, result);
             return Result.success(true); // 无更新也算成功，避免前端报错
         }
 

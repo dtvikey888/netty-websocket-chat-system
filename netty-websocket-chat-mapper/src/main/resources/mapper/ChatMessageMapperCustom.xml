@@ -39,10 +39,9 @@
 
     <update id="batchUpdateMsgReadStatusBySessionId">
         UPDATE chat_message
-        SET is_read = #{com.yqrb.pojo.vo.ChatMessageVO.IS_READ_YES},
-            update_time = CURRENT_TIMESTAMP
+        SET is_read = 1
         WHERE session_id = #{sessionId}
           AND receiver_id = #{receiverId}
-          AND is_read = #{com.yqrb.pojo.vo.ChatMessageVO.IS_READ_NO}
+          AND is_read = 0
     </update>
 </mapper>
