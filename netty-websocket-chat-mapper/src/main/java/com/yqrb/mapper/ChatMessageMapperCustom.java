@@ -3,6 +3,7 @@ package com.yqrb.mapper;
 import com.yqrb.pojo.vo.ChatMessageVO;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Options;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import java.util.List;
 
@@ -28,4 +29,9 @@ public interface ChatMessageMapperCustom {
 
     // 删除会话所有消息（按sessionId）
     int deleteBySessionId(String sessionId);
+
+    /**
+     * 批量更新某个会话的未读消息为已读
+     */
+    int batchUpdateMsgReadStatusBySessionId(@Param("sessionId") String sessionId, @Param("receiverId") String receiverId);
 }

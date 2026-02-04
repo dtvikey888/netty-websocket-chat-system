@@ -37,4 +37,12 @@
         DELETE FROM chat_message WHERE session_id = #{sessionId}
     </delete>
 
+    <update id="batchUpdateMsgReadStatusBySessionId">
+        UPDATE chat_message
+        SET is_read = #{com.yqrb.pojo.vo.ChatMessageVO.IS_READ_YES},
+            update_time = CURRENT_TIMESTAMP
+        WHERE session_id = #{sessionId}
+          AND receiver_id = #{receiverId}
+          AND is_read = #{com.yqrb.pojo.vo.ChatMessageVO.IS_READ_NO}
+    </update>
 </mapper>

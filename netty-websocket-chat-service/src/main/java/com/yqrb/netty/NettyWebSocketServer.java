@@ -4,9 +4,13 @@ import com.alibaba.fastjson.JSON;
 import com.yqrb.netty.constant.NettyConstant;
 import com.yqrb.pojo.OfflineMsg;
 import com.yqrb.pojo.query.OfflineMsgQueryParam;
+import com.yqrb.pojo.vo.ChatMessageVO;
 import com.yqrb.pojo.vo.OfflineMsgVO;
+import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
+import com.yqrb.service.ChatMessageService;
 import com.yqrb.service.OfflineMsgService;
+import com.yqrb.util.SpringContextUtil;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -183,6 +187,56 @@ public class NettyWebSocketServer {
                                                 log.info("【会话注册成功】通道ID：{}，ID：{}，连接类型：{}，已加入在线映射表",
                                                         channelId, receiverId, senderType);
 
+                                                // ======================================
+                                                // 【新增核心代码】查询chat_message未读消息并推送
+                                                // ======================================
+                                                try {
+                                                    // 1. 通过SpringContextUtil获取ChatMessageService Bean（Netty非Spring管理，需手动获取）
+                                                    ChatMessageService chatMessageService = SpringContextUtil.getBean(ChatMessageService.class);
+
+                                                    String authReceiverId = "R_FIXED_0000_"+receiverId;
+                                                    // 修正日志名称，避免误导
+                                                    log.info("【未读消息推送准备】拼接后的authReceiverId：{}，原始发送者ID：{}", authReceiverId, receiverId);
+
+                                                    // 2. 调用方法查询该接收方的未读消息（复用现有getUnreadMessageList方法）
+                                                    Result<List<ChatMessageVO>> unreadResult = chatMessageService.getUnreadMessageList(authReceiverId);
+
+                                                    // 3. 校验查询结果，非空才推送
+                                                    if (unreadResult != null && unreadResult.isSuccess() && !CollectionUtils.isEmpty(unreadResult.getData())) {
+                                                        List<ChatMessageVO> unreadMsgList = unreadResult.getData();
+                                                        log.info("【未读消息推送准备】ID：{}，连接类型：{}，找到{}条chat_message未读消息",
+                                                                receiverId, senderType, unreadMsgList.size());
+
+                                                        // 4. 遍历封装为WebSocketMsgVO，推送给当前通道
+                                                        for (ChatMessageVO unreadMsg : unreadMsgList) {
+                                                            WebSocketMsgVO wsMsg = new WebSocketMsgVO();
+                                                            wsMsg.setReceiverId(unreadMsg.getReceiverId()); // 接收方ID（自身）
+                                                            wsMsg.setUserId(unreadMsg.getSenderId()); // 发送方ID（消息原发送者）
+                                                            wsMsg.setMsgContent(unreadMsg.getContent()); // 消息内容
+                                                            wsMsg.setMsgType(unreadMsg.getMsgType()); // 消息类型
+                                                            wsMsg.setSessionId(unreadMsg.getSessionId()); // 会话ID
+                                                            wsMsg.setSendTime(unreadMsg.getSendTime()); // 消息发送时间
+                                                            wsMsg.setSenderType(unreadMsg.getSenderType()); // 发送者类型（USER/CS/SYSTEM）
+
+                                                            // 5. 写入通道推送消息（和现有离线消息推送写法一致）
+                                                            String jsonMsg = JSON.toJSONString(wsMsg);
+                                                            channel.writeAndFlush(new TextWebSocketFrame(jsonMsg));
+                                                        }
+
+                                                        log.info("【未读消息推送完成】ID：{}，连接类型：{}，成功推送{}条chat_message未读消息",
+                                                                receiverId, senderType, unreadMsgList.size());
+                                                    } else {
+                                                        log.info("【未读消息查询】ID：{}，无chat_message未读消息", receiverId);
+                                                    }
+                                                } catch (Exception e) {
+                                                    log.error("【未读消息推送异常】ID：{}，异常信息：{}", receiverId, e.getMessage(), e);
+                                                    // 异常不阻断后续流程，仅打印日志
+                                                }
+
+
+                                                // ======================================
+                                                // 【原有代码】离线消息（offline_msg）推送逻辑
+                                                // ======================================
                                                 // 新增：查询并推送该ID的离线消息（兼容用户/客服，保留原有逻辑）
                                                 OfflineMsgQueryParam queryParam = new OfflineMsgQueryParam();
                                                 queryParam.setServiceStaffId(receiverId);

@@ -20,4 +20,7 @@ public interface ChatMessageService {
 
     // 新增：按sessionId删除会话所有消息
     Result<Boolean> deleteMessageBySessionId(String sessionId, String receiverId);
+
+    // 新增：批量标记某个会话的所有未读消息为已读（核心补充）
+    Result<Boolean> batchMarkMsgAsReadBySessionId(String sessionId, String receiverId);
 }

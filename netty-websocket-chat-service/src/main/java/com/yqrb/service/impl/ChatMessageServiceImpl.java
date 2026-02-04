@@ -8,6 +8,8 @@ import com.yqrb.service.ChatMessageService;
 import com.yqrb.service.ReceiverIdService;
 import com.yqrb.util.DateUtil;
 import com.yqrb.util.UUIDUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -18,6 +20,8 @@ import java.util.List;
 
 @Service
 public class ChatMessageServiceImpl implements ChatMessageService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatMessageServiceImpl.class);
 
     @Resource
     private ChatMessageMapperCustom chatMessageMapperCustom;
@@ -96,8 +100,17 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             return Result.unauthorized("ReceiverId无效或已过期");
         }
 
+        String result;
+        // 先判断是否以目标前缀开头，再截取
+        if (receiverId.startsWith("R_FIXED_0000_")) {
+            result = receiverId.substring("R_FIXED_0000_".length());
+        } else {
+            result = receiverId; // 不满足前缀，直接返回原字符串
+        }
+
         // 2. 查询未读消息
-        List<ChatMessageVO> unreadMsgList = chatMessageMapperCustom.selectUnreadMsgByReceiverId(receiverId);
+//        List<ChatMessageVO> unreadMsgList = chatMessageMapperCustom.selectUnreadMsgByReceiverId(receiverId);
+        List<ChatMessageVO> unreadMsgList = chatMessageMapperCustom.selectUnreadMsgByReceiverId(result);
 
         // 3. 刷新ReceiverId过期时间
         receiverIdService.refreshReceiverIdExpire(receiverId);
@@ -155,6 +168,34 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         receiverIdService.refreshReceiverIdExpire(receiverId);
 
         // 6. 返回成功结果（返回删除的消息条数，也可直接返回Boolean）
+        return Result.success(true);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> batchMarkMsgAsReadBySessionId(String sessionId, String receiverId) {
+        // 1. 校验ReceiverId有效性
+        if (!receiverIdService.validateReceiverId(receiverId)) {
+            return Result.unauthorized("ReceiverId无效或已过期");
+        }
+
+        // 2. 校验sessionId参数
+        if (!StringUtils.hasText(sessionId)) {
+            return Result.paramError("会话ID（sessionId）不能为空");
+        }
+
+        // 3. 调用Mapper批量更新未读消息为已读（仅更新is_read=0的记录）
+        int updateResult = chatMessageMapperCustom.batchUpdateMsgReadStatusBySessionId(sessionId, receiverId);
+        if (updateResult <= 0) {
+            log.info("【批量标记已读】无未读消息需要更新，会话ID：{}，接收者：{}", sessionId, receiverId);
+            return Result.success(true); // 无更新也算成功，避免前端报错
+        }
+
+        // 4. 刷新ReceiverId过期时间
+        receiverIdService.refreshReceiverIdExpire(receiverId);
+
+        log.info("【批量标记已读成功】会话ID：{}，接收者：{}，共标记{}条消息为已读",
+                sessionId, receiverId, updateResult);
         return Result.success(true);
     }
 }
