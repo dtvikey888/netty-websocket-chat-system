@@ -1,7 +1,6 @@
 package com.yqrb.service.impl;
 
 import com.yqrb.mapper.ChatMessageMapperCustom;
-import com.yqrb.pojo.ChatMessage;
 import com.yqrb.pojo.vo.ChatMessageVO;
 import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.WebSocketMsgVO;

@@ -2,7 +2,11 @@ package com.yqrb.netty;
 
 import com.alibaba.fastjson.JSON;
 import com.yqrb.netty.constant.NettyConstant;
+import com.yqrb.pojo.vo.ChatMessageVO;
+import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
+import com.yqrb.service.ChatMessageService;
+import com.yqrb.util.SpringContextUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelFutureListener;
@@ -90,6 +94,7 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
         super.userEventTriggered(ctx, evt);
     }
 
+    // 2. 在`channelRead0`方法中，补全消息默认值后、调用`forwardMessage`前，添加持久化代码
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, WebSocketMsgVO webSocketMsg) throws Exception {
         Channel currentChannel = ctx.channel();
@@ -147,6 +152,33 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             webSocketMsg.setSenderType(channelSenderType);
             logger.warn("【消息补全】消息无自定义senderType，使用通道绑定类型兜底：{}", webSocketMsg.getSenderType());
         }
+
+        // ======================================
+        // 【新增核心代码】：调用ChatMessageService，持久化消息到chat_message表
+        // ======================================
+        try {
+            // 1. 通过SpringContextUtil获取ChatMessageService Bean（关键：Netty Handler非Spring管理）
+            ChatMessageService chatMessageService = SpringContextUtil.getBean(ChatMessageService.class);
+
+            // 2. 确定权限校验用的ReceiverId（即当前连接的用户ID：channelSelfId，对应你的Controller请求头ReceiverId）
+            String authReceiverId = channelSelfId;
+
+            // 3. 调用业务层sendMessage方法，完成持久化
+            Result<ChatMessageVO> persistResult = chatMessageService.sendMessage(webSocketMsg, authReceiverId);
+
+            // 4. 持久化结果日志（成功/失败区分）
+            if (persistResult != null && persistResult.isSuccess()) {
+                logger.info("【消息持久化成功】通道ID：{}，消息ID：{}，会话ID：{}",
+                        channelId, persistResult.getData().getMsgId(), webSocketMsg.getSessionId());
+            } else {
+                String errorMsg = persistResult == null ? "持久化返回结果为空" : persistResult.getMsg();
+                logger.error("【消息持久化失败】通道ID：{}，错误信息：{}", channelId, errorMsg);
+                // 可选：持久化失败是否终止转发？根据业务需求调整，这里保留转发
+            }
+        } catch (Exception e) {
+            logger.error("【消息持久化异常】通道ID：{}，异常信息：{}", channelId, e.getMessage(), e);
+        }
+
 
         // 转发消息（此时sessionId和senderType均已补全，且保留了消息自定义值）
         forwardMessage(webSocketMsg);
