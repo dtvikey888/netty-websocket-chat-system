@@ -2,11 +2,7 @@ package com.yqrb.netty;
 
 import com.alibaba.fastjson.JSON;
 import com.yqrb.netty.constant.NettyConstant;
-import com.yqrb.pojo.vo.ChatMessageVO;
-import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
-import com.yqrb.service.ChatMessageService;
-import com.yqrb.util.SpringContextUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelFutureListener;
@@ -29,7 +25,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * 优化：统一日志、移除冗余操作、增强消息转发健壮性、整合公共常量类
  * 新增：保留消息自定义sessionId，仅为空时用通道自身ID兜底
  * 补充：保留消息自定义senderType，仅为空时用通道属性兜底
- * 新增：消息持久化功能，调用ChatMessageService存入chat_message表
  */
 public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<WebSocketMsgVO> {
     // 注入SLF4J日志对象（统一日志风格）
@@ -37,17 +32,6 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
 
     private static final ChannelGroup ONLINE_CHANNELS = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
     public static final Map<String, Channel> RECEIVER_CHANNEL_MAP = new ConcurrentHashMap<>();
-
-    // 新增：声明ChatMessageService，通过Spring上下文工具类获取
-    private static ChatMessageService chatMessageService;
-
-    // 静态代码块初始化ChatMessageService
-    static {
-        chatMessageService = SpringContextUtil.getBean(ChatMessageService.class);
-        if (chatMessageService == null) {
-            logger.error("【初始化失败】无法通过SpringContextUtil获取ChatMessageService实例，消息持久化功能将不可用");
-        }
-    }
 
     // ===== 核心修复：不在channelActive中解析URI，改为首次接收消息时解析 =====
     @Override
@@ -162,40 +146,6 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
         if (webSocketMsg.getSenderType() == null || webSocketMsg.getSenderType().trim().isEmpty()) {
             webSocketMsg.setSenderType(channelSenderType);
             logger.warn("【消息补全】消息无自定义senderType，使用通道绑定类型兜底：{}", webSocketMsg.getSenderType());
-        }
-
-        // ======================================
-        // 新增：核心持久化逻辑（调用ChatMessageService存入chat_message表）
-        // ======================================
-        if (chatMessageService != null) {
-            try {
-                // 1. 调用ChatMessageService完成消息入库（第二个参数是发送者自身ID，用于校验）
-                Result<ChatMessageVO> saveResult = chatMessageService.sendMessage(webSocketMsg, channelSelfId);
-
-                // 2. 处理入库结果：失败则给发送方反馈，成功则继续转发
-                if (!saveResult.isSuccess()) {
-                    String errorMsg = "消息持久化失败：" + saveResult.getMsg();
-                    logger.error("【消息持久化失败】通道ID：{}，{}", channelId, errorMsg);
-                    // 给发送方返回错误信息
-                    currentChannel.writeAndFlush(new TextWebSocketFrame(errorMsg))
-                            .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
-                    return;
-                }
-
-                // 3. 入库成功日志
-                logger.info("【消息持久化成功】通道ID：{}，消息ID：{}，会话ID：{}",
-                        channelId, saveResult.getData().getMsgId(), webSocketMsg.getSessionId());
-
-            } catch (Exception e) {
-                String errorMsg = "消息持久化异常：" + e.getMessage();
-                logger.error("【消息持久化异常】通道ID：{}，{}", channelId, errorMsg, e);
-                // 给发送方返回异常信息，不中断实时转发（可选：根据业务需求决定是否返回）
-                currentChannel.writeAndFlush(new TextWebSocketFrame(errorMsg))
-                        .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
-                // 异常不阻断实时转发（保证通信流畅，入库失败后续可补偿）
-            }
-        } else {
-            logger.warn("【消息持久化跳过】ChatMessageService实例为null，无法完成入库");
         }
 
         // 转发消息（此时sessionId和senderType均已补全，且保留了消息自定义值）
