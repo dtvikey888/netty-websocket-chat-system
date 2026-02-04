@@ -161,7 +161,9 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             ChatMessageService chatMessageService = SpringContextUtil.getBean(ChatMessageService.class);
 
             // 2. 确定权限校验用的ReceiverId（即当前连接的用户ID：channelSelfId，对应你的Controller请求头ReceiverId）
-            String authReceiverId = channelSelfId;
+            String authReceiverId = "R_FIXED_0000_"+channelSelfId;
+            // 修正日志名称，避免误导
+            logger.info("【权限校验准备】拼接后的authReceiverId：{}，原始发送者ID：{}", authReceiverId, channelSelfId);
 
             // 3. 调用业务层sendMessage方法，完成持久化
             Result<ChatMessageVO> persistResult = chatMessageService.sendMessage(webSocketMsg, authReceiverId);
