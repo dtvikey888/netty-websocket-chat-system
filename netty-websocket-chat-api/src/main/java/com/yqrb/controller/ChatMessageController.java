@@ -20,8 +20,14 @@ public class ChatMessageController {
     @Resource
     private ChatMessageService chatMessageService;
 
+    /**
+     * 通过 Redis 缓存未读消息数量，减少高并发场景下（大量用户）的数据库查询压力，这个方案非常合理，既能提升响应性能，又能有效降低数据库的负载。
+     * @param webSocketMsg
+     * @param receiverId
+     * @return
+     */
     @PostMapping("/send")
-    @ApiOperation("发送聊天消息")
+    @ApiOperation("发送聊天消息（也持久化保存到数据库,入库后执行Redis缓存更新操作）")
     public Result<ChatMessageVO> sendMessage(
             @RequestBody WebSocketMsgVO webSocketMsg,
             @RequestHeader("ReceiverId") String receiverId
@@ -98,5 +104,14 @@ public class ChatMessageController {
             @RequestHeader("ReceiverId") String receiverId
     ) {
         return chatMessageService.batchMarkMsgAsReadBySessionId(sessionId, receiverId);
+    }
+
+
+    @GetMapping("/unread/count")
+    @ApiOperation("查询未读消息总数（缓存优化，高性能，适合小红点展示）")
+    public Result<Long> getUnreadMsgTotalCount(
+            @RequestHeader("ReceiverId") String receiverId
+    ) {
+        return chatMessageService.getUnreadMsgTotalCount(receiverId);
     }
 }

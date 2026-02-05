@@ -8,6 +8,7 @@ import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
 import com.yqrb.service.ChatMessageService;
 import com.yqrb.service.ReceiverIdService;
+import com.yqrb.service.cache.UnreadMsgCacheService;
 import com.yqrb.util.DateUtil;
 import com.yqrb.util.UUIDUtil;
 import org.slf4j.Logger;
@@ -30,6 +31,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Resource
     private ReceiverIdService receiverIdService;
+
+    // 注入未读消息缓存服务
+    @Resource
+    private UnreadMsgCacheService unreadMsgCacheService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -70,6 +75,18 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         // 4. 保存消息到数据库（捕获唯一索引冲突异常，实现幂等）
         try {
             int insertResult = chatMessageMapperCustom.insertChatMessage(chatMessage);
+            // ... 消息入库成功后，执行以下缓存更新操作
+
+            String result;
+            // 先判断是否以目标前缀开头，再截取
+            if (receiverId.startsWith("R_FIXED_0000_")) {
+                result = receiverId.substring("R_FIXED_0000_".length());
+            } else {
+                result = receiverId; // 不满足前缀，直接返回原字符串
+            }
+            // 2. 【新增】未读消息数 +1（接收者为receiverId，即消息的接收方）
+            unreadMsgCacheService.incrUnreadMsgCount(result);
+
             if (insertResult <= 0) {
                 return Result.error("发送消息失败");
             }
@@ -245,6 +262,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             return Result.paramError("会话ID（sessionId）不能为空");
         }
 
+
         String result;
         // 先判断是否以目标前缀开头，再截取
         if (receiverId.startsWith("R_FIXED_0000_")) {
@@ -252,6 +270,14 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         } else {
             result = receiverId; // 不满足前缀，直接返回原字符串
         }
+
+        // 2. 【新增】先查询本次要标记已读的消息条数（N）
+        int unreadCount = chatMessageMapperCustom.countUnreadMsgBySessionIdAndReceiverId(sessionId, receiverId);
+        if (unreadCount <= 0) {
+            return Result.success(true);
+        }
+
+
         // 用截取后的无前缀 ID 执行数据库查询
         // 3. 调用Mapper批量更新未读消息为已读（仅更新is_read=0的记录）
 //        int updateResult = chatMessageMapperCustom.batchUpdateMsgReadStatusBySessionId(sessionId, receiverId);
@@ -270,5 +296,30 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         return Result.success(true);
     }
 
+    @Override
+    public Result<Long> getUnreadMsgTotalCount(String receiverId) {
+
+        // 1. 校验ReceiverId有效性
+        if (!receiverIdService.validateReceiverId(receiverId)) {
+            return Result.unauthorized("ReceiverId无效或已过期");
+        }
+
+        String result;
+        // 先判断是否以目标前缀开头，再截取
+        if (receiverId.startsWith("R_FIXED_0000_")) {
+            result = receiverId.substring("R_FIXED_0000_".length());
+        } else {
+            result = receiverId; // 不满足前缀，直接返回原字符串
+        }
+
+        // 1. 调用缓存服务，先查Redis，再查DB，自动更新缓存
+        long unreadTotal = unreadMsgCacheService.getUnreadMsgCount(result, () -> {
+            // 回调函数：数据库查询未读消息总数（原有逻辑）
+            return chatMessageMapperCustom.countTotalUnreadMsgByReceiverId(result);
+        });
+
+        // 2. 返回结果
+        return Result.success(unreadTotal);
+    }
 
 }

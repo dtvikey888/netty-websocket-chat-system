@@ -52,4 +52,18 @@ public interface ChatMessageMapperCustom {
     ChatMessageVO selectByMsgId(@Param("msgId") String msgId);
 
 
+    /**
+     * 【新增】先查询本次要标记已读的消息条数（N）
+     * @param sessionId
+     * @param receiverId
+     * @return
+     */
+    int countUnreadMsgBySessionIdAndReceiverId(@Param("sessionId") String sessionId, @Param("receiverId") String receiverId);
+
+    /**
+     * 【新增】统计接收者的所有未读消息总数
+     * @param receiverId
+     * @return
+     */
+    Long countTotalUnreadMsgByReceiverId(@Param("receiverId") String receiverId);
 }

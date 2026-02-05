@@ -27,4 +27,6 @@ public interface ChatMessageService {
     // 新增：批量标记某个会话的所有未读消息为已读（核心补充）
     Result<Boolean> batchMarkMsgAsReadBySessionId(String sessionId, String receiverId);
 
+    // 新增：「查询未读消息总数」的方法（前端用于展示小红点数量，无需返回完整列表，性能更高），优先查询 Redis 缓存。
+    Result<Long> getUnreadMsgTotalCount(String receiverId);
 }

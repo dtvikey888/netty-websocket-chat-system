@@ -86,4 +86,19 @@
         FROM chat_message
         WHERE msg_id = #{msgId}
     </select>
+
+    <!-- 统计会话下接收者的未读消息条数 -->
+    <select id="countUnreadMsgBySessionIdAndReceiverId" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM chat_message
+        WHERE session_id = #{sessionId}
+          AND receiver_id = #{receiverId}
+          AND is_read = 0
+    </select>
+
+    <!-- 统计接收者的所有未读消息总数 -->
+    <select id="countTotalUnreadMsgByReceiverId" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM chat_message
+        WHERE receiver_id = #{receiverId}
+          AND is_read = 0
+    </select>
 </mapper>
