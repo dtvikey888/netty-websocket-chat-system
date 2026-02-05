@@ -23,4 +23,7 @@ public interface ChatMessageService {
 
     // 新增：批量标记某个会话的所有未读消息为已读（核心补充）
     Result<Boolean> batchMarkMsgAsReadBySessionId(String sessionId, String receiverId);
+
+    // 方法查询会话下所有消息，当一个会话有上千条消息时，接口响应慢，前端渲染卡顿，实现分页查询是最优解。
+    Result<List<ChatMessageVO>> getMessageListBySessionId(String sessionId, Integer pageNum, Integer pageSize, String receiverId);
 }

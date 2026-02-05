@@ -53,7 +53,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
         // 3. 构建聊天消息实体
         ChatMessageVO chatMessage = new ChatMessageVO();
-        chatMessage.setMsgId(UUIDUtil.generateMsgId());
+        String msgId = UUIDUtil.generateMsgId();
+        chatMessage.setMsgId(msgId);
         chatMessage.setSenderId(webSocketMsg.getUserId());
         chatMessage.setSenderType(senderType); // 替换固定值，使用校验后的发送者类型
         chatMessage.setReceiverId(webSocketMsg.getReceiverId());
@@ -64,10 +65,23 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         chatMessage.setIsRead(ChatMessageVO.IS_READ_NO);
         chatMessage.setCreateTime(DateUtil.getCurrentDate());
 
-        // 4. 保存消息到数据库
-        int insertResult = chatMessageMapperCustom.insertChatMessage(chatMessage);
-        if (insertResult <= 0) {
-            return Result.error("发送消息失败");
+        // 4. 保存消息到数据库（捕获唯一索引冲突异常，实现幂等）
+
+
+        try {
+            int insertResult = chatMessageMapperCustom.insertChatMessage(chatMessage);
+            if (insertResult <= 0) {
+                return Result.error("发送消息失败");
+            }
+        } catch (Exception e) {
+            // 捕获唯一索引冲突异常（msg_id 重复）
+            if (e.getMessage().contains("uk_msg_id")) {
+                log.info("【消息发送幂等校验】消息已存在，msgId：{}", msgId);
+                // 可选：查询已存在的消息返回，避免前端报错
+                ChatMessageVO existMsg = chatMessageMapperCustom.selectByMsgId(msgId);
+                return Result.success(existMsg);
+            }
+            throw e; // 其他异常正常抛出，触发事务回滚
         }
 
         // 5. 刷新ReceiverId过期时间
@@ -207,5 +221,23 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         log.info("【批量标记已读成功】会话ID：{}，接收者：{}，共标记{}条消息为已读",
                 sessionId, receiverId, updateResult);
         return Result.success(true);
+    }
+
+    @Override
+    public Result<List<ChatMessageVO>> getMessageListBySessionId(String sessionId, Integer pageNum, Integer pageSize, String receiverId) {
+        // 1. 校验ReceiverId有效性
+        if (!receiverIdService.validateReceiverId(receiverId)) {
+            return Result.unauthorized("ReceiverId无效或已过期");
+        }
+
+        // 2. 分页参数兜底（避免空指针，默认第1页，每页20条）
+        pageNum = pageNum == null || pageNum < 1 ? 1 : pageNum;
+        pageSize = pageSize == null || pageSize < 1 || pageSize > 100 ? 20 : pageSize;
+
+        // 3. 查询分页消息列表
+        List<ChatMessageVO> msgList = chatMessageMapperCustom.selectBySessionId(sessionId, pageNum, pageSize);
+
+        // 4. 后续逻辑（略）...
+        return Result.success(msgList);
     }
 }

@@ -32,6 +32,7 @@ public class ChatMessageVO {
     public static final String MSG_TYPE_PAY_REMIND = "PAY_REMIND"; // 付款提醒
     public static final String MSG_TYPE_SYSTEM_TIP = "SYSTEM_TIP"; // 系统提示
 
+    // 消息是否已读
     public static final Integer IS_READ_NO = 0; // 未读
     public static final Integer IS_READ_YES = 1; // 已读
 

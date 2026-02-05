@@ -34,4 +34,11 @@ public interface ChatMessageMapperCustom {
      * 批量更新某个会话的未读消息为已读
      */
     int batchUpdateMsgReadStatusBySessionId(@Param("sessionId") String sessionId, @Param("receiverId") String receiverId);
+
+    // 新增分页参数：pageNum（页码，从1开始）、pageSize（每页条数）
+    List<ChatMessageVO> selectBySessionId(
+            @Param("sessionId") String sessionId,
+            @Param("pageNum") Integer pageNum,
+            @Param("pageSize") Integer pageSize
+    );
 }
