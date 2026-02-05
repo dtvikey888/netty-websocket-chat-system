@@ -66,4 +66,5 @@ public interface ChatMessageMapperCustom {
      * @return
      */
     Long countTotalUnreadMsgByReceiverId(@Param("receiverId") String receiverId);
+
 }

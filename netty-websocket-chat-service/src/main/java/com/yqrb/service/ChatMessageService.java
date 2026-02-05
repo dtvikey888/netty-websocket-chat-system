@@ -3,6 +3,7 @@ package com.yqrb.service;
 import com.yqrb.pojo.vo.ChatMessageVO;
 import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
+
 import java.util.List;
 
 public interface ChatMessageService {
@@ -29,4 +30,5 @@ public interface ChatMessageService {
 
     // 新增：「查询未读消息总数」的方法（前端用于展示小红点数量，无需返回完整列表，性能更高），优先查询 Redis 缓存。
     Result<Long> getUnreadMsgTotalCount(String receiverId);
+
 }
