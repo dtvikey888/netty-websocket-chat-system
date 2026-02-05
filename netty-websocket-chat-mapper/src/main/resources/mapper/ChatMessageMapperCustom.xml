@@ -45,22 +45,27 @@
           AND is_read = 0
     </update>
 
-    <select id="selectBySessionId" resultType="com.yqrb.pojo.vo.ChatMessageVO">
+    <!-- 分页查询会话消息：复用 ChatMessageResultMap，保证字段映射正确 -->
+    <select id="getMessageListBySessionIdWithPage" resultMap="ChatMessageResultMap">
         SELECT
-            msg_id as msgId,
-            sender_id as senderId,
-            sender_type as senderType,
-            receiver_id as receiverId,
-            content as msgContent,
-            msg_type as msgType,
-            session_id as sessionId,
-            send_time as sendTime,
-            is_read as isRead,
-            create_time as createTime
-        FROM chat_message
-        WHERE session_id = #{sessionId}
-        ORDER BY send_time ASC
-            LIMIT #{pageSize} OFFSET #{(pageNum-1)*pageSize}
+            id,
+            msg_id,
+            sender_id,
+            sender_type,
+            receiver_id,
+            content,
+            msg_type,
+            session_id,
+            send_time,
+            is_read,
+            create_time
+        FROM
+            chat_message
+        WHERE
+            session_id = #{sessionId}
+          AND receiver_id = #{receiverId}
+        ORDER BY
+            send_time ASC
     </select>
 
     <!-- 根据msgId查询单个消息，复用已有的结果集映射 ChatMessageResultMap，避免字段映射错误 -->

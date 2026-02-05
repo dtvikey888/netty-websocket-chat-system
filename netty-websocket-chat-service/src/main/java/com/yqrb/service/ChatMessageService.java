@@ -9,8 +9,11 @@ public interface ChatMessageService {
     // 发送聊天消息（保存到数据库）
     Result<ChatMessageVO> sendMessage(WebSocketMsgVO webSocketMsg, String receiverId);
 
-    // 根据会话ID查询消息列表
+    //  无分页：根据会话ID查询消息列表（原有方法）
     Result<List<ChatMessageVO>> getMessageListBySessionId(String sessionId, String receiverId);
+
+    // 【新增】分页：根据会话ID查询消息列表（调用Mapper的selectBySessionId）
+    Result<List<ChatMessageVO>> getMessageListBySessionIdWithPage(String sessionId, String receiverId, Integer pageNum, Integer pageSize);
 
     // 根据接收者ID查询未读消息
     Result<List<ChatMessageVO>> getUnreadMessageList(String receiverId);
@@ -24,6 +27,4 @@ public interface ChatMessageService {
     // 新增：批量标记某个会话的所有未读消息为已读（核心补充）
     Result<Boolean> batchMarkMsgAsReadBySessionId(String sessionId, String receiverId);
 
-    // 方法查询会话下所有消息，当一个会话有上千条消息时，接口响应慢，前端渲染卡顿，实现分页查询是最优解。
-    Result<List<ChatMessageVO>> getMessageListBySessionId(String sessionId, Integer pageNum, Integer pageSize, String receiverId);
 }

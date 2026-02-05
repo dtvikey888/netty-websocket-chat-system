@@ -61,11 +61,17 @@ mapper:
   mappers: com.yqrb.my.mapper.MyMapper
   not-empty: false # 在进行数据库操作时，判断表达式username != null,是否追加 username! = ""
   identity: MYSQL
-# 分页插件配置
+# PageHelper 分页插件配置（最优版，适配你的 mariadb + 聊天消息分页场景）
 pagehelper:
-  #helperDialect: mysql
-  helperDialect: mariadb
-  supportMethodsArguments: true
+  # 指定数据库方言（必须配置，mariadb 与 mysql 语法兼容，填 mysql 也可生效，推荐填 mariadb 更精准）
+  helper-dialect: mariadb
+  # 页码合理化兜底：非法页码自动修正，避免查询异常
+  reasonable: true
+  # 支持通过 Mapper 接口参数传递分页参数（pageNum、pageSize），无需手动调用 PageHelper.startPage()
+  support-methods-arguments: true
+  # 分页参数映射：保证总条数（count）查询正常执行，支撑前端分页组件/滚动加载判断
+  params: count=countSql
+
 
 # 自定义配置（仅保留压缩图片相关，强制开启压缩）
 custom:

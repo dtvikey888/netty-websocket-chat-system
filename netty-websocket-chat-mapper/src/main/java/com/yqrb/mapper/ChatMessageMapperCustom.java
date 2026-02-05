@@ -18,8 +18,17 @@ public interface ChatMessageMapperCustom {
     int insertChatMessage(ChatMessageVO chatMessage);
 
     // 根据会话ID查询消息列表
+    // 1. 【修改】无分页查询：重命名方法名，避免与分页方法冲突，同时保留原有功能
+    // 原方法名：selectBySessionId → 新方法名：selectAllMessageBySessionId
     @Select("SELECT * FROM chat_message WHERE session_id = #{sessionId} ORDER BY send_time ASC")
-    List<ChatMessageVO> selectBySessionId(String sessionId);
+    List<ChatMessageVO> selectAllMessageBySessionId(String sessionId);
+
+    // 分页查询会话消息（去掉分页参数，或保留用于PageHelper）
+    List<ChatMessageVO> getMessageListBySessionIdWithPage(
+            @Param("sessionId") String sessionId,
+            @Param("receiverId") String receiverId
+    );
+
 
     // 根据接收者ID查询未读消息
     List<ChatMessageVO> selectUnreadMsgByReceiverId(String receiverId);
@@ -35,18 +44,12 @@ public interface ChatMessageMapperCustom {
      */
     int batchUpdateMsgReadStatusBySessionId(@Param("sessionId") String sessionId, @Param("receiverId") String receiverId);
 
-    // 新增分页参数：pageNum（页码，从1开始）、pageSize（每页条数）
-    List<ChatMessageVO> selectBySessionId(
-            @Param("sessionId") String sessionId,
-            @Param("pageNum") Integer pageNum,
-            @Param("pageSize") Integer pageSize
-    );
-
-
     /**
      * 根据消息ID（msgId）查询单个聊天消息
      * @param msgId 消息唯一标识
      * @return 聊天消息实体（无匹配数据返回 null）
      */
     ChatMessageVO selectByMsgId(@Param("msgId") String msgId);
+
+
 }

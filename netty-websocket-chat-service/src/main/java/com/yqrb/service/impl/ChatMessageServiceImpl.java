@@ -1,5 +1,7 @@
 package com.yqrb.service.impl;
 
+import com.github.pagehelper.PageHelper;
+import com.github.pagehelper.PageInfo;
 import com.yqrb.mapper.ChatMessageMapperCustom;
 import com.yqrb.pojo.vo.ChatMessageVO;
 import com.yqrb.pojo.vo.Result;
@@ -101,12 +103,55 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         // 2. 查询消息列表
-        List<ChatMessageVO> msgList = chatMessageMapperCustom.selectBySessionId(sessionId);
+        List<ChatMessageVO> msgList = chatMessageMapperCustom.selectAllMessageBySessionId(sessionId);
 
         // 3. 刷新ReceiverId过期时间
         receiverIdService.refreshReceiverIdExpire(receiverId);
 
         return Result.success(msgList);
+    }
+
+    /**
+     * 【新增】分页查询会话消息（调用Mapper的selectBySessionId）
+     */
+    @Override
+    public Result<List<ChatMessageVO>> getMessageListBySessionIdWithPage(
+            String sessionId, String receiverId, Integer pageNum, Integer pageSize) {
+        // 1. 校验 ReceiverId 有效性（先做权限校验，不影响分页逻辑，因为此步骤无 MyBatis 查询）
+        if (!receiverIdService.validateReceiverId(receiverId)) {
+            return Result.unauthorized("ReceiverId无效或已过期");
+        }
+
+        // 2. 分页参数校验与兜底（优化用户体验，避免无效分页）
+        // 页码兜底：小于 1 则默认第 1 页
+        pageNum = pageNum == null || pageNum < 1 ? 1 : pageNum;
+        // 每页条数兜底：小于 1 则默认 10 条，大于 100 则限制为 100 条（防止恶意传入过大数值）
+        pageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+
+        // 3. 开启分页（关键：紧邻后续的 MyBatis 查询，中间无其他无关逻辑）
+        PageHelper.startPage(pageNum, pageSize);
+
+        String result;
+        // 先判断是否以目标前缀开头，再截取
+        if (receiverId.startsWith("R_FIXED_0000_")) {
+            result = receiverId.substring("R_FIXED_0000_".length());
+        } else {
+            result = receiverId; // 不满足前缀，直接返回原字符串
+        }
+        // 4. 调用 Mapper 查询（PageHelper 会自动拦截此查询，拼接 LIMIT 分页语句）
+        List<ChatMessageVO> messageList = chatMessageMapperCustom.getMessageListBySessionIdWithPage(sessionId, result);
+
+        // 5. 封装分页结果（可选，如需返回总条数、总页数给前端，方便前端做分页控件展示）
+        PageInfo<ChatMessageVO> pageInfo = new PageInfo<>(messageList);
+        log.info("【分页查询会话消息】会话ID：{}，接收者：{}，当前页：{}，每页条数：{}，总条数：{}，总页数：{}",
+                sessionId, receiverId, pageInfo.getPageNum(), pageInfo.getPageSize(),
+                pageInfo.getTotal(), pageInfo.getPages());
+
+        // 6. 刷新 ReceiverId 过期时间
+        receiverIdService.refreshReceiverIdExpire(receiverId);
+
+        // 7. 返回结果（如需返回完整分页信息，可封装 Result<PageInfo<ChatMessageVO>>）
+        return Result.success(messageList);
     }
 
     @Override
@@ -169,7 +214,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         // 3. 可选：校验会话是否存在（可根据需求扩展，查询消息列表判断是否为空）
-        List<ChatMessageVO> msgList = chatMessageMapperCustom.selectBySessionId(sessionId);
+        List<ChatMessageVO> msgList = chatMessageMapperCustom.selectAllMessageBySessionId(sessionId);
         if (msgList == null || msgList.isEmpty()) {
             return Result.error("该会话无消息记录，无需删除（sessionId：" + sessionId + "）");
         }
@@ -225,21 +270,5 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         return Result.success(true);
     }
 
-    @Override
-    public Result<List<ChatMessageVO>> getMessageListBySessionId(String sessionId, Integer pageNum, Integer pageSize, String receiverId) {
-        // 1. 校验ReceiverId有效性
-        if (!receiverIdService.validateReceiverId(receiverId)) {
-            return Result.unauthorized("ReceiverId无效或已过期");
-        }
 
-        // 2. 分页参数兜底（避免空指针，默认第1页，每页20条）
-        pageNum = pageNum == null || pageNum < 1 ? 1 : pageNum;
-        pageSize = pageSize == null || pageSize < 1 || pageSize > 100 ? 20 : pageSize;
-
-        // 3. 查询分页消息列表
-        List<ChatMessageVO> msgList = chatMessageMapperCustom.selectBySessionId(sessionId, pageNum, pageSize);
-
-        // 4. 后续逻辑（略）...
-        return Result.success(msgList);
-    }
 }

@@ -6,6 +6,7 @@ import com.yqrb.pojo.vo.WebSocketMsgVO;
 import com.yqrb.service.ChatMessageService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -29,12 +30,25 @@ public class ChatMessageController {
     }
 
     @GetMapping("/list/{sessionId}")
-    @ApiOperation("查询会话消息列表")
+    @ApiOperation("查询会话消息列表（无分页，返回全部消息）")
     public Result<List<ChatMessageVO>> getMessageList(
             @PathVariable String sessionId,
             @RequestHeader("ReceiverId") String receiverId
     ) {
         return chatMessageService.getMessageListBySessionId(sessionId, receiverId);
+    }
+
+    // 【新增】分页查询会话消息接口
+    @GetMapping("/list/page/{sessionId}")
+    @ApiOperation("分页查询会话消息列表（推荐前端滚动加载/分页展示时调用,返回对应接收者接收的会话消息）")
+    public Result<List<ChatMessageVO>> getMessageListWithPage(
+            @ApiParam("会话ID") @PathVariable String sessionId,
+            @ApiParam("接收者ID（请求头传递）") @RequestHeader("ReceiverId") String receiverId,
+            @ApiParam("页码（默认第1页）") @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @ApiParam("每页条数（默认10条，最大100条）") @RequestParam(required = false, defaultValue = "10") Integer pageSize
+    ) {
+        // 调用Service层的分页查询方法
+        return chatMessageService.getMessageListBySessionIdWithPage(sessionId, receiverId, pageNum, pageSize);
     }
 
     @GetMapping("/unread")
