@@ -183,6 +183,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         if (!StringUtils.hasText(sessionId)) {
             return Result.paramError("会话ID（sessionId）不能为空");
         }
+
         String result;
         // 先判断是否以目标前缀开头，再截取
         if (receiverId.startsWith("R_FIXED_0000_")) {
