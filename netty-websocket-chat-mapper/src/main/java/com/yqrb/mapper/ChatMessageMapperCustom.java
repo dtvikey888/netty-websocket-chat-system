@@ -41,4 +41,12 @@ public interface ChatMessageMapperCustom {
             @Param("pageNum") Integer pageNum,
             @Param("pageSize") Integer pageSize
     );
+
+
+    /**
+     * 根据消息ID（msgId）查询单个聊天消息
+     * @param msgId 消息唯一标识
+     * @return 聊天消息实体（无匹配数据返回 null）
+     */
+    ChatMessageVO selectByMsgId(@Param("msgId") String msgId);
 }

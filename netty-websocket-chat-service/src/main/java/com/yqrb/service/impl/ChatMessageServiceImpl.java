@@ -66,8 +66,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         chatMessage.setCreateTime(DateUtil.getCurrentDate());
 
         // 4. 保存消息到数据库（捕获唯一索引冲突异常，实现幂等）
-
-
         try {
             int insertResult = chatMessageMapperCustom.insertChatMessage(chatMessage);
             if (insertResult <= 0) {
@@ -79,6 +77,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 log.info("【消息发送幂等校验】消息已存在，msgId：{}", msgId);
                 // 可选：查询已存在的消息返回，避免前端报错
                 ChatMessageVO existMsg = chatMessageMapperCustom.selectByMsgId(msgId);
+                if (existMsg == null) {
+                    log.warn("【消息发送幂等校验】消息ID存在冲突，但未查询到对应消息，msgId：{}", msgId);
+                    return Result.success(chatMessage); // 返回当前构建的消息，兜底避免前端报错
+                }
                 return Result.success(existMsg);
             }
             throw e; // 其他异常正常抛出，触发事务回滚

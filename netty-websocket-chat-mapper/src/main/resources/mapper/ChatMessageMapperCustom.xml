@@ -62,4 +62,23 @@
         ORDER BY send_time ASC
             LIMIT #{pageSize} OFFSET #{(pageNum-1)*pageSize}
     </select>
+
+    <!-- 根据msgId查询单个消息，复用已有的结果集映射 ChatMessageResultMap，避免字段映射错误 -->
+    <select id="selectByMsgId" resultMap="ChatMessageResultMap">
+        SELECT
+            id,
+            msg_id,
+            sender_id,
+            sender_type,
+            receiver_id,
+            content,
+            msg_type,
+            session_id,
+            send_time,
+            is_read,
+            create_time,
+            update_time
+        FROM chat_message
+        WHERE msg_id = #{msgId}
+    </select>
 </mapper>
