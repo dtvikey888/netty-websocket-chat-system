@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 优化：统一日志、移除冗余操作、增强消息转发健壮性、整合公共常量类
  * 新增：保留消息自定义sessionId，仅为空时用通道自身ID兜底
  * 补充：保留消息自定义senderType，仅为空时用通道属性兜底
+ * 核心修复：所有获取通道自身ID的地方，替换为正确的NettyConstant.RECEIVER_ID_KEY
  */
 public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<WebSocketMsgVO> {
     // 注入SLF4J日志对象（统一日志风格）
@@ -71,7 +72,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             logger.warn("【客户端离线】通道ID：{}，未在RECEIVER_CHANNEL_MAP中找到对应记录", channelId);
         }
 
-        String channelSelfId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
+        // ✅ 修复：替换为RECEIVER_ID_KEY（通道自身ID存在该KEY中）
+        String channelSelfId = channel.attr(NettyConstant.RECEIVER_ID_KEY).get();
         logger.info("【客户端断开】通道ID：{}，通道自身ID：{}，在线人数：{}",
                 channelId,
                 (channelSelfId == null ? "未知" : channelSelfId),
@@ -85,7 +87,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             if (idleEvent.state() == IdleState.READER_IDLE) {
                 Channel channel = ctx.channel();
                 String channelId = channel.id().asShortText();
-                String channelSelfId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
+                // ✅ 修复：替换为RECEIVER_ID_KEY（通道自身ID存在该KEY中）
+                String channelSelfId = channel.attr(NettyConstant.RECEIVER_ID_KEY).get();
                 logger.info("【客户端超时】通道ID：{}，通道自身ID：{}", channelId, (channelSelfId == null ? "未知" : channelSelfId));
                 channel.close();
                 return;
@@ -99,8 +102,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
     protected void channelRead0(ChannelHandlerContext ctx, WebSocketMsgVO webSocketMsg) throws Exception {
         Channel currentChannel = ctx.channel();
         String channelId = currentChannel.id().asShortText();
-        // 从通道获取自身ID和绑定的senderType（仅用于兜底）
-        String channelSelfId = currentChannel.attr(NettyConstant.SESSION_ID_KEY).get();
+        // ✅ 修复：替换为RECEIVER_ID_KEY（通道自身ID存在该KEY中，这是权限校验失败的核心根因）
+        String channelSelfId = currentChannel.attr(NettyConstant.RECEIVER_ID_KEY).get();
         String channelSenderType = currentChannel.attr(NettyConstant.SENDER_TYPE_KEY).get();
 
         // 优化：日志区分「通道自身ID」、「通道绑定senderType」和「消息自定义值」
@@ -196,7 +199,8 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         Channel channel = ctx.channel();
         String channelId = channel.id().asShortText();
-        String channelSelfId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
+        // ✅ 修复：替换为RECEIVER_ID_KEY（通道自身ID存在该KEY中）
+        String channelSelfId = channel.attr(NettyConstant.RECEIVER_ID_KEY).get();
         logger.error("【通道异常】通道ID：{}，通道自身ID：{}，异常原因：{}",
                 channelId,
                 (channelSelfId == null ? "未知" : channelSelfId),

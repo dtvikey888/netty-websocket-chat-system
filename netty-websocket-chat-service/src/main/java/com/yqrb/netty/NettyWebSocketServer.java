@@ -36,19 +36,10 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 用户/客服 → 连接/newspaper/websocket?携带标识（chatType=PRE_SALE+preSaleSessionId+userId/csId）→ Netty WebSocket服务器
- * → 解析标识，区分「售前/售后」→ 售前消息 → 调用PreSaleChatMessageService → 存入pre_sale_chat_message表 → 实时推送给对应接收方（机器人/专属客服/用户）
- * → 售后消息 → 沿用现有逻辑 → 存入chat_message表 + session_mapping表
- * 1. 用户侧连接 WebSocket（售前咨询） 前端连接 URL 示例（携带售前标识、售前会话 ID、用户 ID）：
- * chatType=PRE_SALE：核心标识，告诉 WebSocket 服务器这是售前咨询连接（售后可传chatType=AFTER_SALE，不传默认按售后处理）；
- * preSaleSessionId：售前专属会话 ID（前端调用之前的/api/pre-sale/chat/generate-session-id接口获取）；
- * userId：用户 ID（与售前表的senderId对应，用于存储记录）。
- * ws://localhost:8088/newspaper/websocket?chatType=PRE_SALE&preSaleSessionId=PRE_SESSION_3e8a7c9d4b5f467a890abcdef12345678&userId=LYQY_USER_5fbb6357b77d2e6436a46336
- * 2. 售前客服侧连接 WebSocket（人工对接） 前端连接 URL 示例（携带售前标识、客服 ID）：
- * chatType=PRE_SALE：标识售前连接；
- * csId：客服 ID（用于绑定用户会话，推送用户消息给对应客服）。
- * ws://localhost:8088/newspaper/websocket?chatType=PRE_SALE&csId=LYQY_CS_5fc5bff4b77d2e6436a618aa
- *
+ * 用户侧（receiverId以LYQY_USER_开头）
+ * ws://localhost:8088/newspaper/websocket/LYQY_USER_5fbb6357b77d2e6436a46336?sessionId=SESSION_8600d39e8ae844828c9d4bb17ed118ac
+ * 客服侧（receiverId以LYQY_CS_开头）
+ * ws://localhost:8088/newspaper/websocket/LYQY_CS_5fc5bff4b77d2e6436a618aa?sessionId=SESSION_8600d39e8ae844828c9d4bb17ed118ac
  */
 @Component
 public class NettyWebSocketServer {
@@ -128,7 +119,7 @@ public class NettyWebSocketServer {
 
                                 // ===== 4. WebSocket 协议升级（核心！修改包装方式，让处理器真正生效）=====
                                 String webSocketBasePath = "/newspaper/websocket";
-// 1. 直接创建并添加 WebSocketServerProtocolHandler 到流水线（关键：让其自动加载子处理器）
+                                // 1. 直接创建并添加 WebSocketServerProtocolHandler 到流水线（关键：让其自动加载子处理器）
                                 WebSocketServerProtocolHandler wsProtocolHandler = new WebSocketServerProtocolHandler(
                                         webSocketBasePath,  // 核心前缀路径
                                         null,               // 子协议（无则为null）
@@ -159,6 +150,24 @@ public class NettyWebSocketServer {
                                                 }
 
                                                 // ======================================
+                                                // 新增：核心校验（售后专属！receiverId必须以LYQY_USER_/LYQY_CS_开头）
+                                                // 拦截错误的receiverId，避免后续拼接/日志/业务逻辑出错
+                                                if (!receiverId.startsWith("LYQY_USER_") && !receiverId.startsWith("LYQY_CS_")) {
+                                                    log.error("【会话注册失败】通道ID：{}，售后receiverId格式错误！必须以LYQY_USER_/LYQY_CS_开头，当前错误receiverId：{}，请检查前端WebSocket URL", channelId, receiverId);
+                                                    ctx.channel().close(); // 直接关闭通道，避免无效连接
+                                                    return;
+                                                }
+                                                // ======================================
+
+                                                // ===== 新增：解析前端传入的sessionId（业务会话ID）+ 基础校验 =====
+                                                String sessionId = parseSessionIdFromUri(uri);
+                                                if (sessionId == null || sessionId.trim().isEmpty()) {
+                                                    log.error("【会话注册失败】通道ID：{}，未传入sessionId参数，URI：{}", channelId, uri);
+                                                    ctx.channel().close(); // 售后必须传sessionId，不传直接关闭通道
+                                                    return;
+                                                }
+
+                                                // ======================================
                                                 // 核心修改：根据ID前缀区分用户/客服，绑定对应的senderType
                                                 // 约定：用户ID前缀 LYQY_USER_，客服ID前缀 LYQY_CS_
                                                 String senderType;
@@ -176,16 +185,16 @@ public class NettyWebSocketServer {
                                                 // ======================================
 
                                                 // 注册到业务映射表，供后续消息转发使用
-                                                channel.attr(NettyConstant.SESSION_ID_KEY).set(receiverId);
+                                                channel.attr(NettyConstant.SESSION_ID_KEY).set(sessionId);
                                                 channel.attr(NettyConstant.RECEIVER_ID_KEY).set(receiverId);
                                                 // 替换原来的强制CS绑定，使用区分后的senderType
                                                 channel.attr(NettyConstant.SENDER_TYPE_KEY).set(senderType);
                                                 channel.attr(NettyConstant.USER_ID_KEY).set(receiverId);
                                                 NettyWebSocketServerHandler.RECEIVER_CHANNEL_MAP.put(receiverId, channel);
 
-                                                // 优化日志：打印连接类型
-                                                log.info("【会话注册成功】通道ID：{}，ID：{}，连接类型：{}，已加入在线映射表",
-                                                        channelId, receiverId, senderType);
+                                                // 优化日志：打印sessionId，便于调试（可选，建议加）
+                                                log.info("【会话注册成功】通道ID：{}，ID：{}，连接类型：{}，业务sessionId：{}，已加入在线映射表",
+                                                        channelId, receiverId, senderType, sessionId);
 
                                                 // ======================================
                                                 // 【新增核心代码】查询chat_message未读消息并推送
@@ -195,11 +204,12 @@ public class NettyWebSocketServer {
                                                     ChatMessageService chatMessageService = SpringContextUtil.getBean(ChatMessageService.class);
 
                                                     String authReceiverId = "R_FIXED_0000_"+receiverId;
+                                                    String authSessionId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
                                                     // 修正日志名称，避免误导
-                                                    log.info("【未读消息推送准备】拼接后的authReceiverId：{}，原始发送者ID：{}", authReceiverId, receiverId);
+                                                    log.info("【未读消息推送准备】拼接后的authReceiverId：{}，业务sessionId：{}，原始发送者ID：{}", authReceiverId, authSessionId, receiverId);
 
-                                                    // 2. 调用方法查询该接收方的未读消息（复用现有getUnreadMessageList方法）
-                                                    Result<List<ChatMessageVO>> unreadResult = chatMessageService.getUnreadMessageList(authReceiverId);
+                                                    // 2. 调用方法查询该接收方的未读消息
+                                                    Result<List<ChatMessageVO>> unreadResult = chatMessageService.getUnreadMessageListBySessionId(authSessionId, authReceiverId);
 
                                                     // 3. 校验查询结果，非空才推送
                                                     if (unreadResult != null && unreadResult.isSuccess() && !CollectionUtils.isEmpty(unreadResult.getData())) {
@@ -324,6 +334,22 @@ public class NettyWebSocketServer {
                 log.info("Netty EventLoopGroup 已优雅关闭");
             }
         }, "Netty-WebSocket-Server-Thread").start();
+    }
+
+    // 新增：极简解析URI中query参数里的sessionId（只解析sessionId，最小化改动）
+    private String parseSessionIdFromUri(String uri) {
+        if (uri == null || !uri.contains("?sessionId=")) {
+            return null;
+        }
+        // 截取?后的部分，按&分割，找到sessionId=xxx的片段
+        String paramPart = uri.substring(uri.indexOf("?") + 1);
+        String[] paramPairs = paramPart.split("&");
+        for (String pair : paramPairs) {
+            if (pair.startsWith("sessionId=")) {
+                return pair.substring("sessionId=".length()).trim();
+            }
+        }
+        return null;
     }
 
     @PreDestroy

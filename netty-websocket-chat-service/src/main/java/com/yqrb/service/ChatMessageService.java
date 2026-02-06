@@ -16,8 +16,8 @@ public interface ChatMessageService {
     // 【新增】分页：根据会话ID查询消息列表（调用Mapper的selectBySessionId）
     Result<List<ChatMessageVO>> getMessageListBySessionIdWithPage(String sessionId, String receiverId, Integer pageNum, Integer pageSize);
 
-    // 根据接收者ID查询未读消息
-    Result<List<ChatMessageVO>> getUnreadMessageList(String receiverId);
+    // 根据接收者ID查询会话未读消息
+    Result<List<ChatMessageVO>> getUnreadMessageListBySessionId(String sessionId, String receiverId);
 
     // 标记消息为已读
     Result<Boolean> markMsgAsRead(String msgId, String receiverId);

@@ -30,8 +30,8 @@ public interface ChatMessageMapperCustom {
     );
 
 
-    // 根据接收者ID查询未读消息
-    List<ChatMessageVO> selectUnreadMsgByReceiverId(String receiverId);
+    // 根据接收者ID查询会话未读消息
+    List<ChatMessageVO> selectUnreadMsgBySessionIdAndReceiverId(String sessionId, String receiverId);
 
     // 更新消息已读状态（XML实现）
     int updateMsgReadStatus(String msgId);

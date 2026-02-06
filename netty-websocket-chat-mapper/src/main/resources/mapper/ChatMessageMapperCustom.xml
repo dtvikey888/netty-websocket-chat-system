@@ -26,9 +26,11 @@
     </update>
 
     <!-- 批量查询未读消息 -->
-    <select id="selectUnreadMsgByReceiverId" resultMap="ChatMessageResultMap">
+    <select id="selectUnreadMsgBySessionIdAndReceiverId" resultMap="ChatMessageResultMap">
         SELECT * FROM chat_message
-        WHERE receiver_id = #{receiverId} AND is_read = 0
+        WHERE receiver_id = #{receiverId}
+          AND session_id = #{sessionId}
+          AND is_read = 0
         ORDER BY send_time ASC
     </select>
 

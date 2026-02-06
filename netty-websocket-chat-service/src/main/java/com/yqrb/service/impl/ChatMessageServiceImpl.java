@@ -160,7 +160,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     }
 
     @Override
-    public Result<List<ChatMessageVO>> getUnreadMessageList(String receiverId) {
+    public Result<List<ChatMessageVO>> getUnreadMessageListBySessionId(String sessionId,String receiverId) {
         // 1. 校验ReceiverId有效性
         if (!receiverIdService.validateReceiverId(receiverId)) {
             return Result.unauthorized("ReceiverId无效或已过期");
@@ -173,8 +173,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             result = receiverId;
         }
 
-        // 2. 查询未读消息
-        List<ChatMessageVO> unreadMsgList = chatMessageMapperCustom.selectUnreadMsgByReceiverId(result);
+        // 2. 查询会话未读消息
+        List<ChatMessageVO> unreadMsgList = chatMessageMapperCustom.selectUnreadMsgBySessionIdAndReceiverId(sessionId, result);
 
         // 3. 刷新ReceiverId过期时间
         receiverIdService.refreshReceiverIdExpire(receiverId);
