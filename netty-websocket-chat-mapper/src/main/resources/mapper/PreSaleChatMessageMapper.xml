@@ -17,6 +17,7 @@
         <result column="is_read" property="isRead"/>
         <result column="create_time" property="createTime"/>
     </resultMap>
+
     <!-- 插入售前消息 -->
     <insert id="insertPreSaleChatMessage" parameterType="com.yqrb.pojo.po.PreSaleChatMessagePO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO pre_sale_chat_message (
