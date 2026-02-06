@@ -57,7 +57,6 @@ public class ChatMessageController {
         return chatMessageService.getMessageListBySessionIdWithPage(sessionId, receiverId, pageNum, pageSize);
     }
 
-
     @GetMapping("/unread/{sessionId}")
     @ApiOperation("查询对应接收者接收的会话未读消息列表")
     public Result<List<ChatMessageVO>> getUnreadMessageList(
