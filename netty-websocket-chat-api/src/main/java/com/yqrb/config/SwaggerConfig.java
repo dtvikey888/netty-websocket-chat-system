@@ -18,7 +18,8 @@ import springfox.documentation.swagger2.annotations.EnableSwagger2;
 @EnableSwagger2
 @ConditionalOnProperty(name = "swagger.enable", havingValue = "true")
 public class SwaggerConfig {
-
+    // http://localhost:8088/swagger-ui.html   原路径
+    // http://localhost:8088/doc.html   原路径
     @Bean
     public Docket createRestApi() {
         return new Docket(DocumentationType.SWAGGER_2)
