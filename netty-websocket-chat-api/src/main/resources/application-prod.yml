@@ -1,7 +1,10 @@
 # Dev环境服务器配置
 server:
   port: 8088  # 本地/dev环境访问端口
-
+  tomcat:
+    uri-encoding: UTF-8
+    max-threads: 100  # 复用主配置的2核4G适配值，避免Web请求抢占资源
+    min-spare-threads: 20
 # Dev环境Spring配置
 spring:
   # 缓存配置（修正语法错误，直接指定Redis缓存类型）

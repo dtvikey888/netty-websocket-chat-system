@@ -34,8 +34,8 @@ spring:
   #    password: fandir
   hikari:
     connection-timeout: 30000     # 等待连接池分配连接的最大时长（毫秒），超过时长还无连接则发生 SQLException，默认：30秒
-    minimum-idle: 10              # 最小连接数 CPU4核10个就够
-    maximum-pool-size: 10         # 最大连接数  CPU4核10个就够
+    minimum-idle: 5              # 最小连接数  CPU2核4G最优，减少空闲连接
+    maximum-pool-size: 5         # 最大连接数  CPU2核4G最优，匹配CPU处理能力
     auto-commit: true             # 自动提交
     idle-timeout: 600000          # 连接超时的最大时长（毫秒），超时则被释放（retired），默认：10分钟
     pool-name: NewspaperHikariCP # 连接池名称
@@ -85,12 +85,24 @@ custom:
         width: 1200
         quality: 0.8
         suffix: _compress
+  # 售后Netty配置
   netty:
     websocket:
       port: 8081
-      boss-thread-count: 1
-      worker-thread-count: 16
+      boss-thread-count: 1  # 不变，官方推荐
+      worker-thread-count: 8  # 2核4G最优值（2×2）
       idle-timeout: 600
+      so-backlog: 512  # 2核4G适配，降低连接队列，避免占用内存
+      so-keepalive: true  # 保留TCP保活，配合应用层心跳
+  # 售前Netty配置（与售后完全隔离）
+  preSale:
+    websocket:
+      port: 8089
+      boss-thread-count: 1  # 不变
+      worker-thread-count: 8  # 2核4G最优值
+      idle-timeout: 30
+      so-backlog: 256  # 售前短连接，队列可更小，节省资源
+      so-keepalive: true
   receiver:
     session:
       expire-seconds: 86400
