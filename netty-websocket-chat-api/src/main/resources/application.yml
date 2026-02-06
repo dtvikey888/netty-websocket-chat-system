@@ -110,5 +110,5 @@ custom:
       expire-seconds: 86400
       prefix: "newspaper:session:receiverId:"
       session:receiver:
-      offline-msg-prefix: "newspaper:offline:msg:1" # 补全离线消息Redis前缀
+      offline-msg-prefix: "newspaper:offline:msg:" # 补全离线消息Redis前缀
       offline:msg:
