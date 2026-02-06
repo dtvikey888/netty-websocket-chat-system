@@ -288,5 +288,6 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
             logger.error("【消息转发失败】接收者：{}，会话ID：{}，编码/发送异常：{}",
                     targetReceiverId, channelBindSessionId, e.getMessage(), e);
         }
+
     }
 }
