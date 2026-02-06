@@ -17,17 +17,18 @@ public class PreSaleChatMessageVO {
     private Long id; // 主键ID
     private String msgId; // 售前消息唯一标识
     private String senderId; // 发送者ID
-    private String senderType; // 发送者类型
+    private String senderType; // 发送者类型：USER/CS/SYSTEM
     private String receiverId; // 接收者ID
     private String content; // 消息内容
     private String msgType; // 消息类型
     private String attachmentPath; // 附件路径
-    private String preSaleSessionId; // 售前专属会话ID
+    // 售前专属核心字段（隔离关键）
+    private String preSaleSessionId; // 售前专属会话ID（PRE_SESSION_开头）
     private Date sendTime; // 消息发送时间
     private Integer isRead; // 是否已读
     private Date createTime; // 创建时间
 
-    // 常量复用PO类的定义，避免重复
+    // 常量定义（和售前PO/VO复用，避免硬编码）
     public static final String SENDER_TYPE_USER = PreSaleChatMessagePO.SENDER_TYPE_USER;
     public static final String SENDER_TYPE_CS = PreSaleChatMessagePO.SENDER_TYPE_CS;
     public static final String SENDER_TYPE_SYSTEM = PreSaleChatMessagePO.SENDER_TYPE_SYSTEM;
