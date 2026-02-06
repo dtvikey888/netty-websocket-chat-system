@@ -2,7 +2,6 @@ package com.yqrb.netty;
 
 import com.alibaba.fastjson.JSON;
 import com.yqrb.netty.constant.NettyConstant;
-import com.yqrb.pojo.OfflineMsg;
 import com.yqrb.pojo.query.OfflineMsgQueryParam;
 import com.yqrb.pojo.vo.ChatMessageVO;
 import com.yqrb.pojo.vo.OfflineMsgVO;
@@ -40,6 +39,31 @@ import java.util.concurrent.TimeUnit;
  * ws://localhost:8088/newspaper/websocket/LYQY_USER_5fbb6357b77d2e6436a46336?sessionId=SESSION_8600d39e8ae844828c9d4bb17ed118ac
  * 客服侧（receiverId以LYQY_CS_开头）
  * ws://localhost:8088/newspaper/websocket/LYQY_CS_5fc5bff4b77d2e6436a618aa?sessionId=SESSION_8600d39e8ae844828c9d4bb17ed118ac
+ 客服能收到这条离线消息（网络层面消息已推送到前端），但前端几乎无法将消息正确展示到对应会话中，会出现 ** 消息 “无归属 / 飘错窗口”** 的问题 —— 这是当前代码的核心问题：后端只做了「通道级推送」（只要客服在线就推），但没有和前端「会话激活状态」联动，前端缺少 sessionId 的匹配上下文。
+ 一、先讲清楚：为什么 “能收到但展示异常”？
+ 1. 后端层面：消息 100% 推送成功（客服在线 = 有可用通道）
+ 当前 Netty 的逻辑是：只要客服的 receiverId 能匹配到活跃的 WebSocket 通道，就直接通过channel.writeAndFlush把消息写入通道。
+ 客服在线时，RECEIVER_CHANNEL_MAP中会有该客服 ID 对应的唯一通道，所以网络层面消息一定会发送到前端，后端日志会打印「离线消息补偿推送成功」。
+ 2. 前端层面：消息无法正确渲染（无 sessionId 会话上下文）
+ 客服在线但 “没选择某个 sessionId”，本质是前端处于「多会话状态」，但未激活该 sessionId 对应的会话窗口（比如客服在会话 A 的窗口，而消息是会话 B 的）。
+ 前端接收 WebSocket 消息的核心逻辑是按 sessionId 匹配会话容器：如果前端没有为该 sessionId 创建会话窗口、或未激活该窗口，即使收到了包含 sessionId 的消息，也没有对应的 DOM 容器渲染这条消息，最终表现为：
+ 消息飘到「默认会话窗口」；
+ 消息直接被前端忽略（无匹配 sessionId 则不渲染）；
+ 只看到消息提示，但点不开对应会话（未加载）。
+ 简单说：后端把 “带 sessionId 的消息” 送到了前端，但前端没地方放这条消息。
+ 二、当前代码的核心问题：推送逻辑是「通道级」，而非「会话级」
+ 当前离线消息推送只判断 **「客服是否在线」（通道是否存在），但完全不关心「前端当前激活的是哪个 sessionId 会话」—— 因为前端的会话选择 / 激活状态，是前端的本地状态，后端目前没有感知 **。
+ 这种设计在「单会话场景」下没问题，但在 ** 客服多会话（多 sessionId）** 的核心场景下，就会出现你说的 “消息推了但没意义” 的问题。
+ 三、解决方案：分「轻量适配（推荐）」和「规范方案」，按需选择
+ 核心原则：后端只负责把「带完整 sessionId 的消息」推给前端，由前端处理「按 sessionId 路由 + 未读角标」（这是行业通用方案，因为会话激活状态属于前端交互层，不适合放到后端管理），后端无需感知前端的会话状态，最小化前后端耦合。
+ 方案 1：轻量适配（前端改造，后端无代码修改，最快落地）
+ 这是成本最低、最推荐的方案，利用当前消息中已有的 sessionId 字段，让前端做 2 个关键逻辑改造，即可彻底解决问题：
+ 按 sessionId 做消息路由：前端接收 WebSocket 消息时，先解析sessionId，根据sessionId匹配对应的会话窗口：
+ 如果该 sessionId 的会话窗口已打开→直接渲染到该窗口的消息列表；
+ 如果该 sessionId 的会话窗口未打开→创建会话窗口（或标记为未读），并在会话列表显示「未读消息数」。
+ 会话列表未读角标：对未激活会话的消息，在前端会话列表为该 sessionId 添加未读消息数字角标，提醒客服有新消息，客服点击该会话时再加载 / 渲染消息。
+ ✅ 优势：后端代码完全不用改（当前消息已经携带sessionId），只改前端，快速解决问题，符合前后端分离的设计思想。
+
  */
 @Component
 public class NettyWebSocketServer {
@@ -243,29 +267,38 @@ public class NettyWebSocketServer {
                                                     // 异常不阻断后续流程，仅打印日志
                                                 }
 
-
                                                 // ======================================
-                                                // 【原有代码】离线消息（offline_msg）推送逻辑
+                                                // 【改造后】离线消息（offline_msg）指定会话精准推送逻辑
+                                                // 核心：绑定业务sessionId，按「接收者ID+sessionId+未推送」精准查询/推送/标记
                                                 // ======================================
-                                                // 新增：查询并推送该ID的离线消息（兼容用户/客服，保留原有逻辑）
+                                                // 1. 从通道获取绑定的业务sessionId（和chat_message未读消息用同一个，保证会话统一）
+                                                String bindSessionId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
+                                                // 2. 构建查询参数：新增sessionId过滤，仅查当前会话的未推送离线消息
                                                 OfflineMsgQueryParam queryParam = new OfflineMsgQueryParam();
-                                                queryParam.setServiceStaffId(receiverId);
-                                                queryParam.setIsPushed(0);
+                                                queryParam.setServiceStaffId(receiverId); // 接收者ID（用户/客服）
+                                                queryParam.setSessionId(bindSessionId);   // 核心：指定业务会话ID，实现精准查询
+                                                queryParam.setIsPushed(0);                // 仅查询未推送的消息
                                                 List<OfflineMsgVO> offlineMsgList = offlineMsgService.getOfflineMsgList(queryParam);
 
                                                 if (!CollectionUtils.isEmpty(offlineMsgList)) {
                                                     for (OfflineMsgVO offlineMsgVO : offlineMsgList) {
-                                                        // 构建WebSocket消息并推送
+                                                        // 构建WebSocket消息并推送：新增设置sessionId，前端可识别所属会话
                                                         WebSocketMsgVO wsMsg = new WebSocketMsgVO();
                                                         wsMsg.setMsgType(offlineMsgVO.getMsgType());
                                                         wsMsg.setMsgContent(offlineMsgVO.getMsgContent());
                                                         wsMsg.setReceiverId(offlineMsgVO.getServiceStaffId());
+                                                        wsMsg.setSessionId(offlineMsgVO.getSessionId()); // 关键：传递会话ID给前端
                                                         channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(wsMsg)));
                                                     }
-                                                    // 标记为已推送
-                                                    offlineMsgService.markOfflineMsgAsPushed(receiverId);
-                                                    log.info("【离线消息补偿推送成功】ID：{}，连接类型：{}，共推送{}条离线消息",
-                                                            receiverId, senderType, offlineMsgList.size());
+                                                    // 3. 标记已推送：调用带「接收者ID+sessionId」的方法，精准标记当前会话的消息
+                                                    offlineMsgService.markOfflineMsgAsPushed(receiverId, bindSessionId);
+                                                    // 优化日志：添加sessionId，便于调试和问题排查
+                                                    log.info("【离线消息补偿推送成功】ID：{}，连接类型：{}，会话ID：{}，共推送{}条离线消息",
+                                                            receiverId, senderType, bindSessionId, offlineMsgList.size());
+                                                } else {
+                                                    // 无消息时也打印sessionId，日志更完整
+                                                    log.info("【离线消息查询】ID：{}，连接类型：{}，会话ID：{}，无offline_msg未读消息",
+                                                            receiverId, senderType, bindSessionId);
                                                 }
                                             } else {
                                                 log.error("【会话注册失败】通道ID：{}，URI格式错误：{}", channelId, uri);
@@ -303,7 +336,6 @@ public class NettyWebSocketServer {
                                         super.userEventTriggered(ctx, evt);
                                     }
                                 });
-
 
                                 // ===== 5. 自定义编解码器（必须在协议升级后）=====
                                 pipeline.addLast(new WebSocketMsgCodec());

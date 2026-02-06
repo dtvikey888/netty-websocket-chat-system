@@ -9,6 +9,7 @@
     <result column="service_staff_id" property="serviceStaffId" jdbcType="VARCHAR" />
     <result column="msg_type" property="msgType" jdbcType="VARCHAR" />
     <result column="app_id" property="appId" jdbcType="VARCHAR" />
+    <result column="session_id" property="sessionId" jdbcType="VARCHAR" />
     <result column="is_pushed" property="isPushed" jdbcType="BIT" />
     <result column="create_time" property="createTime" jdbcType="TIMESTAMP" />
     <result column="update_time" property="updateTime" jdbcType="TIMESTAMP" />

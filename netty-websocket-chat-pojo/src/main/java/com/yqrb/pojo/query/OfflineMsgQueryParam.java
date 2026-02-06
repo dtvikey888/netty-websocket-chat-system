@@ -13,6 +13,13 @@ public class OfflineMsgQueryParam {
      */
     private String serviceStaffId;
 
+
+    /**
+     * 业务会话ID（SESSION_开头）
+     */
+    private String sessionId;
+
+
     /**
      * 是否已推送（0=未推送，1=已推送）
      */

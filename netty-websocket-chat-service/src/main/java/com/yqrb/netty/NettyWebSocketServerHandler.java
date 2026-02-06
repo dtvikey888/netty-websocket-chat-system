@@ -239,32 +239,54 @@ public class NettyWebSocketServerHandler extends SimpleChannelInboundHandler<Web
     }
 
     /**
-     * 优化：增强消息转发健壮性，添加发送结果监听、可写性判断
+     * 优化：增强消息转发健壮性 + 核心新增SESSION_ID强制校验（实现会话隔离）
+     * 关键规则：消息携带的sessionId 必须 == 接收者通道绑定的sessionId，才允许转发
      */
     private void forwardMessage(WebSocketMsgVO webSocketMsg) {
         String targetReceiverId = webSocketMsg.getReceiverId();
+        String msgSessionId = webSocketMsg.getSessionId(); // 1. 获取消息携带的sessionId
         Channel targetChannel = RECEIVER_CHANNEL_MAP.get(targetReceiverId);
 
-        // 优化：增加isOpen()、isWritable()判断，避免向无效通道写入消息
-        if (targetChannel != null && targetChannel.isOpen() && targetChannel.isActive() && targetChannel.isWritable()) {
-            try {
-                String jsonMsg = JSON.toJSONString(webSocketMsg);
-                // 优化：添加ChannelFuture监听器，监听消息发送结果
-                targetChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg))
-                        .addListener((ChannelFutureListener) future -> {
-                            if (future.isSuccess()) {
-                                logger.info("【消息转发成功】接收者：{}，发送者类型：{}，最终sessionId：{}",
-                                        targetReceiverId, webSocketMsg.getSenderType(), webSocketMsg.getSessionId());
-                            } else {
-                                logger.error("【消息转发失败】接收者：{}，异常原因：{}",
-                                        targetReceiverId, future.cause().getMessage());
-                            }
-                        });
-            } catch (Exception e) {
-                logger.error("【消息转发失败】接收者：{}，编码/发送异常：{}", targetReceiverId, e.getMessage(), e);
-            }
-        } else {
-            logger.info("【消息转发失败】目标接收者离线或通道无效，接收者：{}", targetReceiverId);
+        // 原有健壮性判断：通道是否有效（保留）
+        if (targetChannel == null || !targetChannel.isOpen() || !targetChannel.isActive() || !targetChannel.isWritable()) {
+            logger.info("【消息转发失败】目标接收者离线或通道无效，接收者：{}，消息sessionId：{}",
+                    targetReceiverId, msgSessionId);
+            return;
+        }
+
+        // ======================================
+        // 核心新增：SESSION_ID 强制校验（会话隔离的关键！）
+        // ======================================
+        // 2. 从接收者通道中获取其绑定的sessionId（握手时已存入channel.attr）
+        String channelBindSessionId = targetChannel.attr(NettyConstant.SESSION_ID_KEY).get();
+        // 3. 非空+一致性校验，不满足则直接拦截
+        if (channelBindSessionId == null || channelBindSessionId.trim().isEmpty()) {
+            logger.warn("【消息转发拦截】接收者通道未绑定sessionId，接收者：{}，消息sessionId：{}",
+                    targetReceiverId, msgSessionId);
+            return;
+        }
+        if (!channelBindSessionId.equals(msgSessionId)) {
+            logger.warn("【消息转发拦截】跨会话消息，拒绝推送！接收者：{}，通道绑定sessionId：{}，消息携带sessionId：{}",
+                    targetReceiverId, channelBindSessionId, msgSessionId);
+            return;
+        }
+
+        // 所有校验通过：才执行消息转发（原有逻辑保留）
+        try {
+            String jsonMsg = JSON.toJSONString(webSocketMsg);
+            targetChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg))
+                    .addListener((ChannelFutureListener) future -> {
+                        if (future.isSuccess()) {
+                            logger.info("【消息转发成功】接收者：{}，会话ID：{}，发送者类型：{}",
+                                    targetReceiverId, channelBindSessionId, webSocketMsg.getSenderType());
+                        } else {
+                            logger.error("【消息转发失败】接收者：{}，会话ID：{}，异常原因：{}",
+                                    targetReceiverId, channelBindSessionId, future.cause().getMessage());
+                        }
+                    });
+        } catch (Exception e) {
+            logger.error("【消息转发失败】接收者：{}，会话ID：{}，编码/发送异常：{}",
+                    targetReceiverId, channelBindSessionId, e.getMessage(), e);
         }
     }
 }

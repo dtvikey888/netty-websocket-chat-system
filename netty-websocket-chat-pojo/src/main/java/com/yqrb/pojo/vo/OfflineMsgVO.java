@@ -28,6 +28,11 @@ public class OfflineMsgVO {
     private String appId;
 
     /**
+     * 业务会话ID（SESSION_开头）
+     */
+    private String sessionId;
+
+    /**
      * 是否已推送补偿（0=未推送，1=已推送）
      */
     private Integer isPushed;

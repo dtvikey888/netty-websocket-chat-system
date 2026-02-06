@@ -1,9 +1,7 @@
 package com.yqrb.pojo;
 
-import javax.persistence.Column;
-import javax.persistence.Id;
-import javax.persistence.Table;
 import java.util.Date;
+import javax.persistence.*;
 
 @Table(name = "offline_msg")
 public class OfflineMsg {
@@ -30,6 +28,12 @@ public class OfflineMsg {
      */
     @Column(name = "app_id")
     private String appId;
+
+    /**
+     * 业务会话ID（SESSION_开头）
+     */
+    @Column(name = "session_id")
+    private String sessionId;
 
     /**
      * 是否已推送补偿（0=未推送，1=已推送）
@@ -125,6 +129,24 @@ public class OfflineMsg {
      */
     public void setAppId(String appId) {
         this.appId = appId;
+    }
+
+    /**
+     * 获取业务会话ID（SESSION_开头）
+     *
+     * @return session_id - 业务会话ID（SESSION_开头）
+     */
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    /**
+     * 设置业务会话ID（SESSION_开头）
+     *
+     * @param sessionId 业务会话ID（SESSION_开头）
+     */
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
     }
 
     /**

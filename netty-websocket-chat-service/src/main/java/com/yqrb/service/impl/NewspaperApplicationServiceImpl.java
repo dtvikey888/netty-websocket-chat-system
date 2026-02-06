@@ -212,7 +212,7 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
         String csReceiverId = application.getServiceStaffId();
         String appId = application.getAppId();
         if (!StringUtils.hasText(csReceiverId)) {
-            System.err.println("【新申请推送】客服ID为空，跳过推送与离线存储");
+            log.error("【新申请推送】客服ID为空，跳过推送与离线存储"); // 替换System.err为日志，统一日志规范
             return;
         }
 
@@ -231,8 +231,8 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
                 DateUtil.formatDate(submitTime, "yyyy-MM-dd HH:mm:ss")
         );
 
-        // 3. 构建离线消息VO（用于客服离线/推送失败时存储）
-        OfflineMsgVO offlineMsgVO = this.buildOfflineMsgVO(application, msgContent, submitTime);
+        // 3. 构建离线消息VO（用于客服离线/推送失败时存储）【修改点：传入sessionId】
+        OfflineMsgVO offlineMsgVO = this.buildOfflineMsgVO(application, msgContent, submitTime, sessionId);
 
         // 4. 校验客服是否在线（有活跃的 WebSocket 通道）
         if (nettyWebSocketUtil.isReceiverOnline(csReceiverId)) {
@@ -253,17 +253,17 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
                 if (csChannel != null) {
                     String jsonMsg = com.alibaba.fastjson.JSON.toJSONString(newAppMsg);
                     csChannel.writeAndFlush(new TextWebSocketFrame(jsonMsg));
-                    System.out.printf("【新申请推送成功】客服%s已收到申请%s的提醒%n", csReceiverId, appId);
+                    log.info("【新申请推送成功】客服{}已收到申请{}的提醒", csReceiverId, appId); // 替换System.out为日志
                 }
             } catch (Exception e) {
                 // 推送失败：降级存储为离线消息（兜底，避免消息丢失）
-                System.err.printf("【新申请推送异常】客服%s，申请%s，原因：%s，已触发离线消息兜底%n",
-                        csReceiverId, appId, e.getMessage());
+                log.error("【新申请推送异常】客服{}，申请{}，原因：{}，已触发离线消息兜底",
+                        csReceiverId, appId, e.getMessage()); // 替换System.err为日志
                 this.saveOfflineMsgFallback(offlineMsgVO);
             }
         } else {
             // 情况2：客服离线，直接存储为离线消息（后续上线补偿）
-            System.out.printf("【新申请推送】客服%s未在线，已存储为离线消息%n", csReceiverId);
+            log.info("【新申请推送】客服{}未在线，已存储为离线消息", csReceiverId); // 替换System.out为日志
             this.saveOfflineMsgFallback(offlineMsgVO);
         }
     }
@@ -273,12 +273,14 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
      * @param application 登报申请信息
      * @param msgContent 消息内容
      * @param submitTime 提交时间
+     * @param sessionId 业务会话ID【新增】：绑定离线消息到指定会话
      * @return 离线消息VO
      */
-    private OfflineMsgVO buildOfflineMsgVO(NewspaperApplicationVO application, String msgContent, Date submitTime) {
+    private OfflineMsgVO buildOfflineMsgVO(NewspaperApplicationVO application, String msgContent, Date submitTime, String sessionId) {
         OfflineMsgVO offlineMsgVO = new OfflineMsgVO();
         // 补全离线消息核心字段（与数据库表对应）
         offlineMsgVO.setServiceStaffId(application.getServiceStaffId()); // 目标客服ID
+        offlineMsgVO.setSessionId(sessionId);                           // 【核心新增】绑定业务会话ID
         offlineMsgVO.setMsgType(WebSocketMsgVO.MSG_TYPE_NEW_APPLICATION); // 消息类型（与WebSocket一致）
         offlineMsgVO.setAppId(application.getAppId()); // 申请ID（关联登报申请）
         offlineMsgVO.setMsgContent(msgContent); // 消息内容（与在线推送一致）
@@ -607,6 +609,18 @@ public class NewspaperApplicationServiceImpl implements NewspaperApplicationServ
                 // 客服离线，存储离线消息（复用现有离线消息逻辑）
                 log.info("【退款申请推送】客服{}未在线，已存储为离线消息", csReceiverId);
                 // 此处可复用 buildOfflineMsgVO 方法，仅修改消息类型即可
+                // pushRefundApplyToCs方法中复用buildOfflineMsgVO的完整写法
+                SessionMappingVO sessionMapping = sessionMappingMapperCustom.selectByAppId(application.getAppId());
+                if (sessionMapping != null) {
+                    OfflineMsgVO refundOfflineMsg = this.buildOfflineMsgVO(
+                            application,
+                            msgContent,
+                            applyTime,
+                            sessionMapping.getSessionId() // 从会话映射中获取退款申请对应的sessionId
+                    );
+                    // 调用离线消息存储方法
+                    this.saveOfflineMsgFallback(refundOfflineMsg);
+                }
             }
         } catch (Exception e) {
             log.error("【退款申请推送异常】客服{}，申请{}，原因：{}", csReceiverId, appId, e.getMessage());

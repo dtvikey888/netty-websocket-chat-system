@@ -2,25 +2,28 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.yqrb.mapper.OfflineMsgMapperCustom">
 
-    <!-- 通用结果集映射（复用） -->
+    <!-- 通用结果集映射（复用，新增sessionId） -->
     <resultMap id="BaseResultMap" type="com.yqrb.pojo.vo.OfflineMsgVO">
         <id column="id" property="id"/>
         <result column="service_staff_id" property="serviceStaffId"/>
         <result column="msg_type" property="msgType"/>
         <result column="app_id" property="appId"/>
+        <!-- ===== 新增：session_id 映射 ===== -->
+        <result column="session_id" property="sessionId"/>
         <result column="msg_content" property="msgContent"/>
         <result column="is_pushed" property="isPushed"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
 
-    <!-- 多条件查询离线消息 -->
+    <!-- 多条件查询离线消息（核心优化：新增sessionId过滤，精准查询指定会话） -->
     <select id="selectByCondition" parameterType="com.yqrb.pojo.query.OfflineMsgQueryParam" resultMap="BaseResultMap">
         SELECT
         id,
         service_staff_id,
         msg_type,
         app_id,
+        session_id, <!-- 新增：查询session_id -->
         msg_content,
         is_pushed,
         create_time,
@@ -29,9 +32,13 @@
         offline_msg
         WHERE
         1=1
-        <!-- 可选条件：客服ID -->
+        <!-- 可选条件：接收者ID（用户/客服） -->
         <if test="serviceStaffId != null and serviceStaffId != ''">
             AND service_staff_id = #{serviceStaffId}
+        </if>
+        <!-- 新增：可选条件：业务会话ID（精准过滤，sessionId为null时跳过） -->
+        <if test="sessionId != null and sessionId != ''">
+            AND session_id = #{sessionId}
         </if>
         <!-- 可选条件：推送状态 -->
         <if test="isPushed != null">
@@ -42,8 +49,8 @@
         create_time DESC
     </select>
 
-    <!-- 批量更新指定客服的消息为「已推送」 -->
-    <update id="updateIsPushedByServiceStaffId">
+    <!-- 批量更新指定「接收者ID+会话ID」的消息为「已推送」（优化：精准更新，避免跨会话） -->
+    <update id="updateIsPushedByServiceStaffIdAndSessionId">
         UPDATE
         offline_msg
         SET
@@ -51,24 +58,26 @@
         update_time = CURRENT_TIMESTAMP
         WHERE
         service_staff_id = #{serviceStaffId}
+        AND session_id = #{sessionId} <!-- 新增：限定会话ID -->
         AND is_pushed = 0 <!-- 只更新未推送的消息，避免重复更新 -->
     </update>
 
     <!-- 清理过期已推送的离线消息 -->
     <delete id="cleanExpiredOfflineMsg">
         DELETE FROM
-        offline_msg
+            offline_msg
         WHERE
-        is_pushed = 1
-        AND create_time &lt; DATE_SUB(CURRENT_TIMESTAMP, INTERVAL #{days} DAY)
+            is_pushed = 1
+          AND create_time &lt; DATE_SUB(CURRENT_TIMESTAMP, INTERVAL #{days} DAY)
     </delete>
 
-    <!-- 新增：插入离线消息（核心补充，实现存储功能） -->
+    <!-- 插入离线消息（核心优化：新增session_id插入） -->
     <insert id="insertOfflineMsg" parameterType="com.yqrb.pojo.vo.OfflineMsgVO">
         INSERT INTO offline_msg (
         service_staff_id,
         msg_type,
         app_id,
+        session_id, <!-- 新增：插入session_id -->
         msg_content,
         is_pushed,
         create_time,
@@ -77,10 +86,11 @@
         #{serviceStaffId},
         #{msgType},
         #{appId},
+        #{sessionId}, <!-- 新增：传递sessionId参数 -->
         #{msgContent},
         #{isPushed},
-        CURRENT_TIMESTAMP, <!-- 数据库自动生成创建时间，无需前端传递 -->
-        CURRENT_TIMESTAMP  <!-- 数据库自动生成更新时间，无需前端传递 -->
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
         )
     </insert>
 
