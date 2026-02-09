@@ -185,9 +185,21 @@ public class PreSaleNettyWebSocketServerHandler extends SimpleChannelInboundHand
             return;
         }
 
-        // 会话ID一致性校验（售前专属）
+        // 会话ID一致性校验（售前专属）- 增加空值判断
         String channelSessionId = targetChannel.attr(NettyConstant.PRE_SALE_SESSION_ID_KEY).get();
-        if (channelSessionId == null || !channelSessionId.equals(targetSessionId)) {
+        if (channelSessionId == null) {
+            logger.warn("【售前-消息转发提醒】通道未绑定会话ID，ReceiverId：{}，消息会话ID：{}", targetReceiverId, targetSessionId);
+            // 若通道未绑定会话ID，且消息有会话ID，则绑定后转发
+            if (targetSessionId != null && !targetSessionId.isEmpty()) {
+                targetChannel.attr(NettyConstant.PRE_SALE_SESSION_ID_KEY).set(targetSessionId);
+                channelSessionId = targetSessionId;
+            } else {
+                logger.warn("【售前-消息转发拦截】通道和消息均无会话ID，ReceiverId：{}", targetReceiverId);
+                return;
+            }
+        }
+        // 仅当消息有会话ID时才校验一致性（兼容无会话ID的场景）
+        if (targetSessionId != null && !targetSessionId.isEmpty() && !channelSessionId.equals(targetSessionId)) {
             logger.warn("【售前-消息转发拦截】跨会话消息，通道会话ID：{}，消息会话ID：{}", channelSessionId, targetSessionId);
             return;
         }

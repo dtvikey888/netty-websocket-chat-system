@@ -1,5 +1,6 @@
 package com.yqrb.controller;
 
+import com.yqrb.pojo.po.PreSaleChatMessagePO;
 import com.yqrb.pojo.vo.PreSaleChatMessageVO;
 import com.yqrb.pojo.vo.Result;
 import com.yqrb.service.PreSaleChatMessageService;
@@ -65,9 +66,9 @@ public class PreSaleChatMessageController {
      */
     @GetMapping("/list-by-session/{preSaleSessionId}")
     @ApiOperation("按会话ID查询售前消息")
-    public Result<List<PreSaleChatMessageVO>> listByPreSaleSessionId(@PathVariable String preSaleSessionId,
+    public Result<List<PreSaleChatMessagePO>> listByPreSaleSessionId(@PathVariable String preSaleSessionId,
                                                                      @RequestHeader("ReceiverId") String receiverId) {
-        return preSaleChatMessageService.listByPreSaleSessionId(preSaleSessionId,receiverId);
+        return preSaleChatMessageService.listUnreadBySessionAndReceiver(preSaleSessionId,receiverId);
     }
 
     /**

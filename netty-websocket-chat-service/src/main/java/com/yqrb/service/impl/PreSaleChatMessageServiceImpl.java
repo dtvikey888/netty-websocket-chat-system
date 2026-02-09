@@ -3,6 +3,8 @@ package com.yqrb.service.impl;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.lang.UUID;
 import com.alibaba.fastjson.JSON;
+import com.github.pagehelper.PageHelper;
+import com.github.pagehelper.PageInfo;
 import com.yqrb.mapper.PreSaleChatMessageMapper;
 import com.yqrb.netty.constant.NettyConstant;
 import com.yqrb.netty.pre.PreSaleNettyWebSocketServerHandler;
@@ -13,13 +15,15 @@ import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.ResultCode;
 import com.yqrb.service.PreSaleChatMessageService;
 import com.yqrb.service.ReceiverIdService;
-import com.yqrb.util.UUIDUtil; // 引入UUID工具类
+import com.yqrb.service.cache.RedisUnreadMsgCacheService;
+import com.yqrb.util.UUIDUtil;
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
@@ -30,7 +34,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 售前咨询聊天记录Service实现类
+ * 售前咨询聊天记录Service实现类（完整适配售后未读消息逻辑）
  */
 @Service
 public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService {
@@ -48,6 +52,10 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
     @Resource
     private ReceiverIdService receiverIdService;
 
+    // 新增：注入Redis未读消息缓存服务
+    @Resource
+    private RedisUnreadMsgCacheService redisUnreadMsgCacheService;
+
     @Override
     public Result<Void> wsReconnectPushUnread(String sessionId, String receiverId) {
         // 1. 参数校验：sessionId + receiverId 均非空
@@ -59,15 +67,20 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
         }
 
         try {
-            // 2. 按sessionId + receiverId 查询售前未读消息（核心：适配售前表）
-            List<PreSaleChatMessagePO> unreadMsgPOList = preSaleChatMessageMapper.listUnreadBySessionIdAndReceiverId(sessionId, receiverId);
+            // 处理ReceiverId前缀（和售后对齐：截取R_FIXED_0000_）
+            String realReceiverId = receiverId.startsWith("R_FIXED_0000_")
+                    ? receiverId.substring("R_FIXED_0000_".length())
+                    : receiverId;
+
+            // 2. 按sessionId + 真实ReceiverId 查询售前未读消息
+            List<PreSaleChatMessagePO> unreadMsgPOList = preSaleChatMessageMapper.listUnreadBySessionIdAndReceiverId(sessionId, realReceiverId);
             if (CollectionUtils.isEmpty(unreadMsgPOList)) {
                 // 无未读消息，自定义成功提示（泛型兼容Void）
                 return Result.custom(ResultCode.SUCCESS, "售前重连成功，当前会话无未读消息");
             }
 
-            // 3. 查找售前Netty通道（优先按receiverId，兜底按sessionId）
-            Channel targetChannel = PreSaleNettyWebSocketServerHandler.PRE_SALE_RECEIVER_CHANNEL_MAP.get(receiverId);
+            // 3. 查找售前Netty通道（优先按真实ReceiverId，兜底按sessionId）
+            Channel targetChannel = PreSaleNettyWebSocketServerHandler.PRE_SALE_RECEIVER_CHANNEL_MAP.get(realReceiverId);
             if (targetChannel == null) {
                 targetChannel = findPreSaleChannelBySessionId(sessionId);
             }
@@ -140,7 +153,7 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
         // 2. 会话后缀（安全截取，避免索引越界）
         String sessionSuffix = getSafeSessionSuffix(preSaleSessionId);
         // 3. 拼接最终格式（确保PRE_MSG_前缀不缺失）
-        return "PRE_MSG_" + timestamp + "_" + sessionSuffix;
+        return PRE_MSG_PREFIX + timestamp + "_" + sessionSuffix;
     }
 
     /**
@@ -148,40 +161,50 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
      */
     private String getSafeSessionSuffix(String preSaleSessionId) {
         // 校验会话ID是否为空/格式错误
-        if (!StringUtils.hasText(preSaleSessionId) || !preSaleSessionId.startsWith("PRE_SESSION_")) {
+        if (!StringUtils.hasText(preSaleSessionId) || !preSaleSessionId.startsWith(PRE_SESSION_PREFIX)) {
             logger.warn("售前会话ID格式异常：{}，使用随机后缀兜底", preSaleSessionId);
             // 生成8位随机字符串兜底
             return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         }
 
         // 截取会话ID前缀后的部分
-        String sessionWithoutPrefix = preSaleSessionId.substring("PRE_SESSION_".length());
+        String sessionWithoutPrefix = preSaleSessionId.substring(PRE_SESSION_PREFIX.length());
         // 确保截取长度不超过字符串长度
-        int suffixStartIndex = Math.max(0, sessionWithoutPrefix.length() - 8);
+        int suffixStartIndex = Math.max(0, sessionWithoutPrefix.length() - SESSION_SUFFIX_LENGTH);
         String suffix = sessionWithoutPrefix.substring(suffixStartIndex);
         // 兜底：如果截取后不足8位，补0
-        if (suffix.length() < 8) {
-            suffix = String.format("%-8s", suffix).replace(' ', '0');
+        if (suffix.length() < SESSION_SUFFIX_LENGTH) {
+            suffix = String.format("%-" + SESSION_SUFFIX_LENGTH + "s", suffix).replace(' ', '0');
         }
         return suffix;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Result<Void> savePreSaleChatMessage(PreSaleChatMessageVO vo, String receiverId) {
         try {
+            // 1. 权限校验
             if (!receiverIdService.validateReceiverId(receiverId)) {
                 return Result.unauthorized("ReceiverId无效或已过期");
             }
-            if (vo == null || vo.getSenderId() == null || vo.getPreSaleSessionId() == null) {
-                return Result.error("必要参数不能为空");
+            // 2. 参数校验
+            if (vo == null || !StringUtils.hasText(vo.getSenderId()) || !StringUtils.hasText(vo.getPreSaleSessionId())) {
+                return Result.paramError("发送者ID、会话ID不能为空");
+            }
+            if (!StringUtils.hasText(vo.getContent())) {
+                return Result.paramError("消息内容不能为空");
             }
 
-            // 核心修改：强制生成规范的msgId（覆盖传入的无效msgId）
+            // 3. 处理ReceiverId前缀（和售后对齐）
+            String realReceiverId = receiverId.startsWith("R_FIXED_0000_")
+                    ? receiverId.substring("R_FIXED_0000_".length())
+                    : receiverId;
+
+            // 4. 生成规范msgId（覆盖传入的无效msgId）
             String standardMsgId = generatePreSaleMsgId(vo.getPreSaleSessionId());
             vo.setMsgId(standardMsgId);
-            logger.debug("为售前消息生成规范msgId：{}，会话ID：{}", standardMsgId, vo.getPreSaleSessionId());
 
-            // 补全默认值
+            // 5. 补全默认值
             if (vo.getSenderType() == null) {
                 vo.setSenderType(PreSaleChatMessageVO.SENDER_TYPE_USER);
             }
@@ -195,23 +218,77 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
                 vo.setSendTime(new Date());
             }
 
+            // 6. VO转PO并保存
             PreSaleChatMessagePO po = new PreSaleChatMessagePO();
             BeanUtils.copyProperties(vo, po);
             int affectedRows = preSaleChatMessageMapper.insertPreSaleChatMessage(po);
-            return affectedRows > 0 ? Result.success() : Result.error("保存售前消息失败");
+            if (affectedRows <= 0) {
+                return Result.error("保存售前消息失败");
+            }
+
+            // 7. 入库成功后更新Redis未读消息数（原子操作，高并发安全）
+            if (StringUtils.hasText(vo.getReceiverId())) {
+                redisUnreadMsgCacheService.incrUnreadMsgCount(vo.getReceiverId());
+            }
+
+            logger.info("【售前消息保存成功】msgId：{}，会话ID：{}，接收者：{}",
+                    standardMsgId, vo.getPreSaleSessionId(), vo.getReceiverId());
+            return Result.success();
+
         } catch (Exception e) {
+            // 捕获唯一索引冲突（幂等处理）
+            if (e.getMessage() != null && e.getMessage().contains("uk_pre_msg_id")) {
+                logger.info("【售前消息幂等校验】消息已存在，msgId：{}", vo.getMsgId());
+                return Result.success();
+            }
             logger.error("保存售前消息异常", e);
             return Result.error("保存售前消息异常：" + e.getMessage());
         }
     }
 
     @Override
-    public Result<List<PreSaleChatMessageVO>> listByPreSaleSessionId(String preSaleSessionId, String receiverId) {
+    public Result<List<PreSaleChatMessagePO>> listUnreadBySessionAndReceiver(String sessionId, String receiverId) {
         try {
+            // 关键：如果authReceiverId带前缀，这里需要去掉前缀（R_FIXED_0000_）
+            String realReceiverId = receiverId.startsWith("R_FIXED_0000_")
+                    ? receiverId.substring("R_FIXED_0000_".length())
+                    : receiverId;
+
+            List<PreSaleChatMessagePO> unreadList = preSaleChatMessageMapper.listUnreadBySessionIdAndReceiverId(sessionId, realReceiverId);
+            return Result.success(unreadList);
+        } catch (Exception e) {
+            logger.error("查询售前未读消息失败", e);
+            return Result.error("查询未读消息失败");
+        }
+    }
+
+    /**
+     * 【新增】分页查询售前会话消息（和售后对齐）
+     */
+    @Override
+    public Result<List<PreSaleChatMessageVO>> listByPreSaleSessionIdWithPage(
+            String preSaleSessionId, String receiverId, Integer pageNum, Integer pageSize) {
+        try {
+            // 1. 权限校验
             if (!receiverIdService.validateReceiverId(receiverId)) {
                 return Result.unauthorized("ReceiverId无效或已过期");
             }
+
+            // 2. 分页参数兜底
+            pageNum = pageNum == null || pageNum < 1 ? 1 : pageNum;
+            pageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+
+            // 3. 处理ReceiverId前缀
+            String realReceiverId = receiverId.startsWith("R_FIXED_0000_")
+                    ? receiverId.substring("R_FIXED_0000_".length())
+                    : receiverId;
+
+            // 4. 开启分页
+            PageHelper.startPage(pageNum, pageSize);
             List<PreSaleChatMessagePO> poList = preSaleChatMessageMapper.listByPreSaleSessionId(preSaleSessionId);
+            PageInfo<PreSaleChatMessagePO> pageInfo = new PageInfo<>(poList);
+
+            // 5. PO转VO
             List<PreSaleChatMessageVO> voList = new ArrayList<>();
             if (!CollectionUtils.isEmpty(poList)) {
                 poList.forEach(po -> {
@@ -220,19 +297,34 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
                     voList.add(vo);
                 });
             }
+
+            logger.info("【售前分页查询】会话ID：{}，接收者：{}，当前页：{}，总条数：{}",
+                    preSaleSessionId, receiverId, pageInfo.getPageNum(), pageInfo.getTotal());
+
+            // 6. 刷新ReceiverId过期时间
+            receiverIdService.refreshReceiverIdExpire(receiverId);
             return Result.success(voList);
+
         } catch (Exception e) {
-            logger.error("查询售前会话消息异常", e);
-            return Result.error("查询售前会话消息异常：" + e.getMessage());
+            logger.error("分页查询售前会话消息异常", e);
+            return Result.error("分页查询售前会话消息异常：" + e.getMessage());
         }
     }
 
     @Override
     public Result<List<PreSaleChatMessageVO>> listByUserId(String userId, String receiverId) {
         try {
+            // 1. 权限校验
             if (!receiverIdService.validateReceiverId(receiverId)) {
                 return Result.unauthorized("ReceiverId无效或已过期");
             }
+
+            // 2. 处理ReceiverId前缀
+            String realReceiverId = receiverId.startsWith("R_FIXED_0000_")
+                    ? receiverId.substring("R_FIXED_0000_".length())
+                    : receiverId;
+
+            // 3. 查询消息列表
             List<PreSaleChatMessagePO> poList = preSaleChatMessageMapper.listByUserId(userId);
             List<PreSaleChatMessageVO> voList = new ArrayList<>();
             if (!CollectionUtils.isEmpty(poList)) {
@@ -242,10 +334,132 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
                     voList.add(vo);
                 });
             }
+
+            // 4. 刷新ReceiverId过期时间
+            receiverIdService.refreshReceiverIdExpire(receiverId);
             return Result.success(voList);
+
         } catch (Exception e) {
             logger.error("查询用户售前消息异常", e);
             return Result.error("查询用户售前消息异常：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 【新增】批量标记售前会话未读消息为已读（和售后对齐）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> batchMarkMsgAsReadBySessionId(String sessionId, String receiverId) {
+        try {
+            // 1. 权限校验
+            if (!receiverIdService.validateReceiverId(receiverId)) {
+                return Result.unauthorized("ReceiverId无效或已过期");
+            }
+            if (!StringUtils.hasText(sessionId)) {
+                return Result.paramError("会话ID不能为空");
+            }
+
+            // 2. 处理ReceiverId前缀
+            String realReceiverId = receiverId.startsWith("R_FIXED_0000_")
+                    ? receiverId.substring("R_FIXED_0000_".length())
+                    : receiverId;
+
+            // 3. 查询未读消息数
+            int unreadCount = preSaleChatMessageMapper.countUnreadMsgBySessionIdAndReceiverId(sessionId, realReceiverId);
+            if (unreadCount <= 0) {
+                return Result.success(true);
+            }
+
+            // 4. 批量标记已读
+            int updateResult = preSaleChatMessageMapper.batchUpdateMsgReadStatusBySessionId(sessionId, realReceiverId);
+            if (updateResult <= 0) {
+                logger.info("【售前批量标记已读】无未读消息需要更新，会话ID：{}", sessionId);
+                return Result.success(true);
+            }
+
+            // 5. 更新Redis未读消息数（递减）
+            redisUnreadMsgCacheService.decrUnreadMsgCount(realReceiverId, unreadCount);
+
+            logger.info("【售前批量标记已读成功】会话ID：{}，接收者：{}，标记{}条消息为已读",
+                    sessionId, receiverId, updateResult);
+
+            // 6. 刷新ReceiverId过期时间
+            receiverIdService.refreshReceiverIdExpire(receiverId);
+            return Result.success(true);
+
+        } catch (Exception e) {
+            logger.error("批量标记售前消息已读异常", e);
+            return Result.error("批量标记售前消息已读异常：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 【新增】查询接收方未读消息总数（优先Redis，兜底DB）
+     */
+    @Override
+    public Result<Long> getUnreadMsgTotalCount(String receiverId) {
+        try {
+            // 1. 权限校验
+            if (!receiverIdService.validateReceiverId(receiverId)) {
+                return Result.unauthorized("ReceiverId无效或已过期");
+            }
+
+            // 2. 处理ReceiverId前缀
+            String realReceiverId = receiverId.startsWith("R_FIXED_0000_")
+                    ? receiverId.substring("R_FIXED_0000_".length())
+                    : receiverId;
+
+            // 3. 优先查Redis，兜底查DB
+            long unreadTotal = redisUnreadMsgCacheService.getUnreadMsgCount(realReceiverId, () -> {
+                return preSaleChatMessageMapper.countTotalUnreadMsgByReceiverId(realReceiverId);
+            });
+
+            logger.info("【售前未读总数查询】接收者：{}，未读总数：{}", receiverId, unreadTotal);
+            return Result.success(unreadTotal);
+
+        } catch (Exception e) {
+            logger.error("查询售前未读消息总数异常", e);
+            return Result.error("查询售前未读消息总数异常：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 【新增】按会话ID删除售前会话所有消息
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> deleteMessageBySessionId(String sessionId, String receiverId) {
+        try {
+            // 1. 权限校验
+            if (!receiverIdService.validateReceiverId(receiverId)) {
+                return Result.unauthorized("ReceiverId无效或已过期，无删除权限");
+            }
+            if (!StringUtils.hasText(sessionId)) {
+                return Result.paramError("会话ID不能为空");
+            }
+
+            // 2. 校验会话是否存在
+            List<PreSaleChatMessagePO> msgList = preSaleChatMessageMapper.listByPreSaleSessionId(sessionId);
+            if (CollectionUtils.isEmpty(msgList)) {
+                return Result.error("该售前会话无消息记录，无需删除");
+            }
+
+            // 3. 执行删除
+            int deleteResult = preSaleChatMessageMapper.deleteBySessionId(sessionId);
+            if (deleteResult <= 0) {
+                return Result.error("删除售前会话消息失败");
+            }
+
+            // 4. 刷新ReceiverId过期时间
+            receiverIdService.refreshReceiverIdExpire(receiverId);
+
+            logger.info("【售前会话消息删除成功】会话ID：{}，删除{}条记录", sessionId, deleteResult);
+            return Result.success(true);
+
+        } catch (Exception e) {
+            logger.error("删除售前会话消息异常", e);
+            return Result.error("删除售前会话消息异常：" + e.getMessage());
         }
     }
 

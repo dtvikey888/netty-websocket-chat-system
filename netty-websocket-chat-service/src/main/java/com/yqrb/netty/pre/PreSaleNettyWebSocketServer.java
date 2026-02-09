@@ -2,6 +2,7 @@ package com.yqrb.netty.pre;
 
 import com.alibaba.fastjson.JSON;
 import com.yqrb.netty.constant.NettyConstant;
+import com.yqrb.pojo.po.PreSaleChatMessagePO;
 import com.yqrb.pojo.vo.PreSaleChatMessageVO;
 import com.yqrb.pojo.vo.Result;
 import com.yqrb.service.PreSaleChatMessageService;
@@ -31,9 +32,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 售前Netty WebSocket服务（完全独立，端口8089）
- * 前端连接地址：
- * 用户侧：ws://localhost:8089/pre-sale/websocket/LYQY_USER_xxx?preSaleSessionId=PRE_SESSION_xxx
- * 客服侧：ws://localhost:8089/pre-sale/websocket/LYQY_CS_xxx?preSaleSessionId=PRE_SESSION_xxx
+ * 优化：对齐售后的未读消息推送逻辑，处理ReceiverId前缀
  */
 @Component
 public class PreSaleNettyWebSocketServer {
@@ -162,7 +161,7 @@ public class PreSaleNettyWebSocketServer {
                                                 log.info("【售前-会话注册成功】通道ID：{}，ReceiverId：{}，类型：{}，会话ID：{}",
                                                         channelId, receiverId, senderType, preSaleSessionId);
 
-                                                // 推送售前未读消息（从pre_sale_chat_message查询）
+                                                // 推送售前未读消息（优化：处理ReceiverId前缀，和售后对齐）
                                                 pushUnreadPreSaleMessage(channel, receiverId, preSaleSessionId);
 
                                                 // 清理HTTP处理器
@@ -224,19 +223,25 @@ public class PreSaleNettyWebSocketServer {
     }
 
     /**
-     * 推送售前未读消息（从pre_sale_chat_message查询is_read=0）
+     * 推送售前未读消息（优化：处理ReceiverId前缀，和售后对齐）
      */
     private void pushUnreadPreSaleMessage(Channel channel, String receiverId, String preSaleSessionId) {
         try {
             PreSaleChatMessageService preSaleChatMessageService = SpringContextUtil.getBean(PreSaleChatMessageService.class);
-            Result<List<PreSaleChatMessageVO>> unreadResult = preSaleChatMessageService.listByPreSaleSessionId(preSaleSessionId, receiverId);
+
+            // 注意：如果Service层已处理前缀，这里直接传原始receiverId即可（无需拼接R_FIXED_0000_）
+            // 若权限校验必须用前缀，需确保Service层能正确解析
+            Result<List<PreSaleChatMessagePO>> unreadResult = preSaleChatMessageService.listUnreadBySessionAndReceiver(preSaleSessionId, receiverId);
 
             if (unreadResult != null && unreadResult.isSuccess() && !CollectionUtils.isEmpty(unreadResult.getData())) {
-                List<PreSaleChatMessageVO> unreadList = unreadResult.getData();
+                List<PreSaleChatMessagePO> unreadList = unreadResult.getData();
                 log.info("【售前-未读消息推送】ReceiverId：{}，找到{}条未读消息", receiverId, unreadList.size());
-                for (PreSaleChatMessageVO msg : unreadList) {
+
+                // SQL已筛选is_read=0，无需再判断
+                for (PreSaleChatMessagePO msg : unreadList) {
                     channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(msg)));
                 }
+
                 log.info("【售前-未读消息推送完成】ReceiverId：{}，推送{}条", receiverId, unreadList.size());
             } else {
                 log.info("【售前-未读消息查询】ReceiverId：{}，无未读消息", receiverId);

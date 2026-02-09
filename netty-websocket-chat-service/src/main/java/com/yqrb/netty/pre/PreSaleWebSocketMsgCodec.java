@@ -11,12 +11,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * 售前WebSocket消息编解码器（完全独立，适配售前VO）
+ * 售前WebSocket消息编解码器（修复纯文本消息会话ID设置问题）
  */
 public class PreSaleWebSocketMsgCodec extends MessageToMessageCodec<WebSocketFrame, PreSaleChatMessageVO> {
     private static final Logger logger = LoggerFactory.getLogger(PreSaleWebSocketMsgCodec.class);
@@ -67,9 +66,10 @@ public class PreSaleWebSocketMsgCodec extends MessageToMessageCodec<WebSocketFra
 
                 vo.setReceiverId(targetReceiverId);
                 vo.setContent(realContent);
-                // 可选：将自定义sessionId存入扩展字段（如果需要）
-                logger.info("【售前-解码】通道ID：{}，纯文本消息封装完成，接收者ID：{}，内容：{}",
-                        channelId, targetReceiverId, realContent);
+                // 关键修复：将解析的sessionId设置到售前会话ID属性
+                vo.setPreSaleSessionId(customSessionId);
+                logger.info("【售前-解码】通道ID：{}，纯文本消息封装完成，接收者ID：{}，会话ID：{}，内容：{}",
+                        channelId, targetReceiverId, customSessionId, realContent);
             }
 
             if (vo != null) {

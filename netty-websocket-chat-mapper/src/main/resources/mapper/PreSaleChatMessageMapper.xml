@@ -18,8 +18,6 @@
         <result column="create_time" property="createTime"/>
     </resultMap>
 
-
-
     <!-- 售前未读消息查询（核心：适配pre_sale_chat_message表） -->
     <select id="listUnreadBySessionIdAndReceiverId" resultMap="PreSaleChatMessageResultMap">
         SELECT * FROM pre_sale_chat_message
@@ -42,7 +40,8 @@
             attachment_path,
             pre_sale_session_id,
             send_time,
-            is_read
+            is_read,
+            create_time
         ) VALUES (
                      #{msgId},
                      #{senderId},
@@ -53,7 +52,8 @@
                      #{attachmentPath},
                      #{preSaleSessionId},
                      #{sendTime},
-                     #{isRead}
+                     #{isRead},
+                     NOW()
                  )
     </insert>
 
@@ -70,6 +70,37 @@
         WHERE sender_id = #{userId}
         ORDER BY send_time DESC
     </select>
+
+    <!-- 【新增】统计会话下接收者的未读消息条数 -->
+    <select id="countUnreadMsgBySessionIdAndReceiverId" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM pre_sale_chat_message
+        WHERE pre_sale_session_id = #{sessionId}
+          AND receiver_id = #{receiverId}
+          AND is_read = 0
+    </select>
+
+    <!-- 【新增】统计接收者的所有未读消息总数 -->
+    <select id="countTotalUnreadMsgByReceiverId" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM pre_sale_chat_message
+        WHERE receiver_id = #{receiverId}
+          AND is_read = 0
+    </select>
+
+    <!-- 【新增】批量更新会话下未读消息为已读 -->
+    <update id="batchUpdateMsgReadStatusBySessionId">
+        UPDATE pre_sale_chat_message
+        SET is_read = 1,
+            update_time = NOW()
+        WHERE pre_sale_session_id = #{sessionId}
+          AND receiver_id = #{receiverId}
+          AND is_read = 0
+    </update>
+
+    <!-- 【新增】按会话ID删除所有消息 -->
+    <delete id="deleteBySessionId">
+        DELETE FROM pre_sale_chat_message
+        WHERE pre_sale_session_id = #{sessionId}
+    </delete>
 
     <!-- 清理过期售前消息：关键修复：用<![CDATA[ ]]>包裹包含特殊字符的SQL -->
     <delete id="deleteExpiredPreSaleChatMessage" parameterType="Date">
