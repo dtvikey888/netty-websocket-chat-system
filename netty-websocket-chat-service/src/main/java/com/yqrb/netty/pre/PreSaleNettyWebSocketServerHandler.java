@@ -220,7 +220,6 @@ public class PreSaleNettyWebSocketServerHandler extends SimpleChannelInboundHand
         }
     }
 
-
     /**
      * 通道异常处理
      */
