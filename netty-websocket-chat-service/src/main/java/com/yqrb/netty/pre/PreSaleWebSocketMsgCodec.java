@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 售前WebSocket消息编解码器（完全独立，适配售前VO）
@@ -34,23 +35,41 @@ public class PreSaleWebSocketMsgCodec extends MessageToMessageCodec<WebSocketFra
             // 尝试JSON解析
             try {
                 vo = JSON.parseObject(msgContent, PreSaleChatMessageVO.class);
+                // 生成唯一msgId（如果前端未传）
+                if (vo.getMsgId() == null || vo.getMsgId().trim().isEmpty()) {
+                    vo.setMsgId(UUID.randomUUID().toString().replace("-", ""));
+                }
             } catch (JSONException e) {
-                // 纯文本格式解析：receiverId:xxx|preSaleSessionId:xxx|消息内容
+                // 纯文本格式解析：receiverId:xxx|sessionId:xxx|消息内容
                 vo = new PreSaleChatMessageVO();
+                // 生成唯一msgId
+                vo.setMsgId(UUID.randomUUID().toString().replace("-", ""));
+
                 String targetReceiverId = null;
+                String customSessionId = null;
                 String realContent = msgContent;
 
                 if (msgContent.contains("|")) {
-                    String[] parts = msgContent.split("\\|", 3);
-                    if (parts.length >= 2 && parts[0].startsWith("receiverId:")) {
+                    String[] parts = msgContent.split("\\|", 3); // 分割为3部分：receiverId、sessionId、内容
+                    // 解析接收者ID
+                    if (parts.length >= 1 && parts[0].startsWith("receiverId:")) {
                         targetReceiverId = parts[0].substring("receiverId:".length()).trim();
-                        realContent = parts[1].trim();
+                    }
+                    // 解析自定义会话ID（可选）
+                    if (parts.length >= 2 && parts[1].startsWith("sessionId:")) {
+                        customSessionId = parts[1].substring("sessionId:".length()).trim();
+                    }
+                    // 解析真实消息内容
+                    if (parts.length >= 3) {
+                        realContent = parts[2].trim();
                     }
                 }
 
                 vo.setReceiverId(targetReceiverId);
                 vo.setContent(realContent);
-                logger.info("【售前-解码】通道ID：{}，纯文本消息封装完成", channelId);
+                // 可选：将自定义sessionId存入扩展字段（如果需要）
+                logger.info("【售前-解码】通道ID：{}，纯文本消息封装完成，接收者ID：{}，内容：{}",
+                        channelId, targetReceiverId, realContent);
             }
 
             if (vo != null) {
@@ -68,6 +87,10 @@ public class PreSaleWebSocketMsgCodec extends MessageToMessageCodec<WebSocketFra
             byteBuf.readerIndex(readerIndex);
             String jsonStr = new String(bytes, StandardCharsets.UTF_8);
             PreSaleChatMessageVO vo = JSON.parseObject(jsonStr, PreSaleChatMessageVO.class);
+            // 生成唯一msgId（如果未传）
+            if (vo.getMsgId() == null || vo.getMsgId().trim().isEmpty()) {
+                vo.setMsgId(UUID.randomUUID().toString().replace("-", ""));
+            }
             out.add(vo);
             return;
         }

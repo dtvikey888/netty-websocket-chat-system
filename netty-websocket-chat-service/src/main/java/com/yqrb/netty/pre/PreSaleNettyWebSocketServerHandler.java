@@ -135,14 +135,38 @@ public class PreSaleNettyWebSocketServerHandler extends SimpleChannelInboundHand
     private void persistPreSaleMessage(PreSaleChatMessageVO msg, String authReceiverId) {
         try {
             PreSaleChatMessageService service = SpringContextUtil.getBean(PreSaleChatMessageService.class);
+
+            authReceiverId = "R_FIXED_0000_"+authReceiverId;
+
+            // 增加详细日志，排查ReceiverId问题
+            logger.info("【售前-消息持久化】准备保存消息，msgId：{}，发送者ID：{}，认证ReceiverId：{}，接收者ID：{}，会话ID：{}",
+                    msg.getMsgId(), msg.getSenderId(), authReceiverId, msg.getReceiverId(), msg.getPreSaleSessionId());
+
             Result<Void> result = service.savePreSaleChatMessage(msg, authReceiverId);
+
             if (result.isSuccess()) {
                 logger.info("【售前-消息持久化成功】会话ID：{}，消息ID：{}", msg.getPreSaleSessionId(), msg.getMsgId());
             } else {
-                logger.error("【售前-消息持久化失败】会话ID：{}，错误：{}", msg.getPreSaleSessionId(), result.getMsg());
+                logger.error("【售前-消息持久化失败】会话ID：{}，消息ID：{}，错误码：{}，错误信息：{}",
+                        msg.getPreSaleSessionId(), msg.getMsgId(),
+                        result.getCode() == null ? "未知" : result.getCode(),
+                        result.getMsg() == null ? "无" : result.getMsg());
+                // 可选：如果是ReceiverId无效，尝试用senderId重新校验
+                if (result.getMsg() != null && result.getMsg().contains("ReceiverId无效或已过期")) {
+                    logger.warn("【售前-消息持久化重试】使用senderId：{} 替代authReceiverId：{} 重新保存",
+                            msg.getSenderId(), authReceiverId);
+                    Result<Void> retryResult = service.savePreSaleChatMessage(msg, msg.getSenderId());
+                    if (retryResult.isSuccess()) {
+                        logger.info("【售前-消息持久化重试成功】会话ID：{}，消息ID：{}", msg.getPreSaleSessionId(), msg.getMsgId());
+                    } else {
+                        logger.error("【售前-消息持久化重试失败】会话ID：{}，消息ID：{}，错误信息：{}",
+                                msg.getPreSaleSessionId(), msg.getMsgId(), retryResult.getMsg());
+                    }
+                }
             }
         } catch (Exception e) {
-            logger.error("【售前-消息持久化异常】会话ID：{}，异常：{}", msg.getPreSaleSessionId(), e.getMessage(), e);
+            logger.error("【售前-消息持久化异常】会话ID：{}，消息ID：{}，异常：{}",
+                    msg.getPreSaleSessionId(), msg.getMsgId(), e.getMessage(), e);
         }
     }
 

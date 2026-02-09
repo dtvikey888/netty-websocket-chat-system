@@ -4,7 +4,6 @@ import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.lang.UUID;
 import com.alibaba.fastjson.JSON;
 import com.yqrb.mapper.PreSaleChatMessageMapper;
-import com.yqrb.netty.NettyWebSocketServerHandler;
 import com.yqrb.netty.constant.NettyConstant;
 import com.yqrb.netty.pre.PreSaleNettyWebSocketServerHandler;
 import com.yqrb.pojo.po.PreSaleChatMessagePO;
@@ -14,6 +13,7 @@ import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.ResultCode;
 import com.yqrb.service.PreSaleChatMessageService;
 import com.yqrb.service.ReceiverIdService;
+import com.yqrb.util.UUIDUtil; // 引入UUID工具类
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
@@ -35,6 +35,12 @@ import java.util.Map;
 @Service
 public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService {
     private static final Logger logger = LoggerFactory.getLogger(PreSaleChatMessageServiceImpl.class);
+
+    // 提取常量：统一管理前缀（和UUIDUtil风格对齐，便于维护）
+    private static final String PRE_SESSION_PREFIX = "PRE_SESSION_";
+    private static final String PRE_MSG_PREFIX = "PRE_MSG_";
+    // 会话后缀截取长度
+    private static final int SESSION_SUFFIX_LENGTH = 8;
 
     @Resource
     private PreSaleChatMessageMapper preSaleChatMessageMapper;
@@ -112,17 +118,52 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
         return null;
     }
 
-
+    /**
+     * 生成售前会话ID（对齐UUIDUtil风格，增加异常兜底）
+     */
     @Override
     public String generatePreSaleSessionId() {
-        return "PRE_SESSION_" + UUID.randomUUID().toString().replace("-", "");
+        try {
+            // 复用UUIDUtil的无横线UUID生成逻辑，保持风格统一
+            return PRE_SESSION_PREFIX + UUIDUtil.getUUID();
+        } catch (Exception e) {
+            // 兜底：直接使用Hutool UUID，避免工具类异常导致生成失败
+            logger.warn("使用UUIDUtil生成售前会话ID失败，降级使用Hutool UUID，异常：{}", e.getMessage());
+            return PRE_SESSION_PREFIX + UUID.randomUUID().toString().replace("-", "");
+        }
     }
 
     @Override
     public String generatePreSaleMsgId(String preSaleSessionId) {
+        // 1. 时间戳（毫秒级）
         long timestamp = System.currentTimeMillis();
-        String sessionSuffix = preSaleSessionId.substring(preSaleSessionId.length() - 8);
+        // 2. 会话后缀（安全截取，避免索引越界）
+        String sessionSuffix = getSafeSessionSuffix(preSaleSessionId);
+        // 3. 拼接最终格式（确保PRE_MSG_前缀不缺失）
         return "PRE_MSG_" + timestamp + "_" + sessionSuffix;
+    }
+
+    /**
+     * 安全获取会话ID后缀（8位），兼容异常场景
+     */
+    private String getSafeSessionSuffix(String preSaleSessionId) {
+        // 校验会话ID是否为空/格式错误
+        if (!StringUtils.hasText(preSaleSessionId) || !preSaleSessionId.startsWith("PRE_SESSION_")) {
+            logger.warn("售前会话ID格式异常：{}，使用随机后缀兜底", preSaleSessionId);
+            // 生成8位随机字符串兜底
+            return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        }
+
+        // 截取会话ID前缀后的部分
+        String sessionWithoutPrefix = preSaleSessionId.substring("PRE_SESSION_".length());
+        // 确保截取长度不超过字符串长度
+        int suffixStartIndex = Math.max(0, sessionWithoutPrefix.length() - 8);
+        String suffix = sessionWithoutPrefix.substring(suffixStartIndex);
+        // 兜底：如果截取后不足8位，补0
+        if (suffix.length() < 8) {
+            suffix = String.format("%-8s", suffix).replace(' ', '0');
+        }
+        return suffix;
     }
 
     @Override
@@ -134,9 +175,13 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
             if (vo == null || vo.getSenderId() == null || vo.getPreSaleSessionId() == null) {
                 return Result.error("必要参数不能为空");
             }
-            if (vo.getMsgId() == null) {
-                vo.setMsgId(generatePreSaleMsgId(vo.getPreSaleSessionId()));
-            }
+
+            // 核心修改：强制生成规范的msgId（覆盖传入的无效msgId）
+            String standardMsgId = generatePreSaleMsgId(vo.getPreSaleSessionId());
+            vo.setMsgId(standardMsgId);
+            logger.debug("为售前消息生成规范msgId：{}，会话ID：{}", standardMsgId, vo.getPreSaleSessionId());
+
+            // 补全默认值
             if (vo.getSenderType() == null) {
                 vo.setSenderType(PreSaleChatMessageVO.SENDER_TYPE_USER);
             }
