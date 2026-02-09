@@ -20,6 +20,22 @@ public class PreSaleChatMessageController {
     private PreSaleChatMessageService preSaleChatMessageService;
 
     /**
+     * 售前WebSocket重连-推送该会话未读消息
+     * @param sessionId 售前会话ID
+     * @param receiverId 售前接收方ID（客户/售前客服）
+     * @return 统一响应结果
+     */
+    @GetMapping("/ws/reconnect")
+    @ApiOperation("售前WebSocket重连-推送该会话未读消息")
+    public Result<Void> wsReconnect(
+            @RequestParam String sessionId,
+            @RequestParam String receiverId // 必传，限定接收方
+    ) {
+        return preSaleChatMessageService.wsReconnectPushUnread(sessionId, receiverId);
+    }
+
+
+    /**
      * 接口1：生成售前会话ID（用户打开售前咨询入口时调用）
      * @return 售前会话ID
      */

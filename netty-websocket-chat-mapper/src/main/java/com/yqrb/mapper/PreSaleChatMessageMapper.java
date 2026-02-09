@@ -12,6 +12,18 @@ import java.util.List;
  */
 @Mapper
 public interface PreSaleChatMessageMapper {
+
+    /**
+     * 按sessionId + receiverId 查询售前未读消息（is_read=0）
+     * @param sessionId 售前会话ID
+     * @param receiverId 接收方ID
+     * @return 未读消息列表
+     */
+    List<PreSaleChatMessagePO> listUnreadBySessionIdAndReceiverId(
+            @Param("sessionId") String sessionId,
+            @Param("receiverId") String receiverId
+    );
+
     /**
      * 插入一条售前消息记录
      * @param preSaleChatMessagePO 售前消息PO

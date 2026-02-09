@@ -18,6 +18,18 @@
         <result column="create_time" property="createTime"/>
     </resultMap>
 
+
+
+    <!-- 售前未读消息查询（核心：适配pre_sale_chat_message表） -->
+    <select id="listUnreadBySessionIdAndReceiverId" resultMap="PreSaleChatMessageResultMap">
+        SELECT * FROM pre_sale_chat_message
+        WHERE
+            pre_sale_session_id = #{sessionId}
+          AND receiver_id = #{receiverId}
+          AND is_read = 0
+        ORDER BY send_time ASC
+    </select>
+
     <!-- 插入售前消息 -->
     <insert id="insertPreSaleChatMessage" parameterType="com.yqrb.pojo.po.PreSaleChatMessagePO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO pre_sale_chat_message (

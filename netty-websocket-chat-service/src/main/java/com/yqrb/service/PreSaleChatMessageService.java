@@ -10,6 +10,15 @@ import java.util.List;
  * 售前咨询聊天记录Service
  */
 public interface PreSaleChatMessageService {
+
+    /**
+     * 售前WebSocket重连-推送指定会话+接收方的未读消息
+     * @param sessionId 售前会话ID
+     * @param receiverId 接收方ID
+     * @return 统一响应结果
+     */
+    Result<Void> wsReconnectPushUnread(String sessionId, String receiverId);
+
     /**
      * 生成唯一的售前会话ID
      * @return 售前会话ID（格式：PRE_SESSION_+UUID）

@@ -2,22 +2,32 @@ package com.yqrb.service.impl;
 
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.lang.UUID;
+import com.alibaba.fastjson.JSON;
 import com.yqrb.mapper.PreSaleChatMessageMapper;
+import com.yqrb.netty.NettyWebSocketServerHandler;
+import com.yqrb.netty.constant.NettyConstant;
+import com.yqrb.netty.pre.PreSaleNettyWebSocketServerHandler;
 import com.yqrb.pojo.po.PreSaleChatMessagePO;
 import com.yqrb.pojo.vo.PreSaleChatMessageVO;
+import com.yqrb.pojo.vo.PreSaleWebSocketMsgVO;
 import com.yqrb.pojo.vo.Result;
+import com.yqrb.pojo.vo.ResultCode;
 import com.yqrb.service.PreSaleChatMessageService;
 import com.yqrb.service.ReceiverIdService;
+import io.netty.channel.Channel;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 售前咨询聊天记录Service实现类
@@ -31,6 +41,77 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
 
     @Resource
     private ReceiverIdService receiverIdService;
+
+    @Override
+    public Result<Void> wsReconnectPushUnread(String sessionId, String receiverId) {
+        // 1. 参数校验：sessionId + receiverId 均非空
+        if (!StringUtils.hasText(sessionId)) {
+            return Result.paramError("sessionId不能为空");
+        }
+        if (!StringUtils.hasText(receiverId)) {
+            return Result.paramError("receiverId不能为空");
+        }
+
+        try {
+            // 2. 按sessionId + receiverId 查询售前未读消息（核心：适配售前表）
+            List<PreSaleChatMessagePO> unreadMsgPOList = preSaleChatMessageMapper.listUnreadBySessionIdAndReceiverId(sessionId, receiverId);
+            if (CollectionUtils.isEmpty(unreadMsgPOList)) {
+                // 无未读消息，自定义成功提示（泛型兼容Void）
+                return Result.custom(ResultCode.SUCCESS, "售前重连成功，当前会话无未读消息");
+            }
+
+            // 3. 查找售前Netty通道（优先按receiverId，兜底按sessionId）
+            Channel targetChannel = PreSaleNettyWebSocketServerHandler.PRE_SALE_RECEIVER_CHANNEL_MAP.get(receiverId);
+            if (targetChannel == null) {
+                targetChannel = findPreSaleChannelBySessionId(sessionId);
+            }
+            if (targetChannel == null || !targetChannel.isActive() || !targetChannel.isWritable()) {
+                return Result.error("售前重连成功，但会话通道未在线，未读消息将在通道上线后自动推送");
+            }
+
+            // 4. 批量推送（适配售前WebSocketMsgVO）
+            for (PreSaleChatMessagePO po : unreadMsgPOList) {
+                PreSaleWebSocketMsgVO wsMsg = new PreSaleWebSocketMsgVO();
+                wsMsg.setSessionId(po.getPreSaleSessionId());
+                wsMsg.setReceiverId(po.getReceiverId()); // 限定售前接收方
+                wsMsg.setUserId(po.getSenderId());
+                wsMsg.setMsgContent(po.getContent());
+                wsMsg.setMsgType(po.getMsgType());
+                wsMsg.setSendTime(po.getSendTime());
+                wsMsg.setSenderType(po.getSenderType());
+
+                targetChannel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(wsMsg)));
+            }
+
+            logger.info("【售前WebSocket重连】sessionId：{}，receiverId：{}，成功推送{}条未读消息",
+                    sessionId, receiverId, unreadMsgPOList.size());
+            // 推送成功，自定义提示
+            return Result.custom(ResultCode.SUCCESS, "售前重连成功，已推送" + unreadMsgPOList.size() + "条未读消息");
+
+        } catch (Exception e) {
+            logger.error("【售前WebSocket重连异常】sessionId：{}，receiverId：{}，异常信息：{}",
+                    sessionId, receiverId, e.getMessage(), e);
+            return Result.error("售前重连推送未读消息异常，请稍后重试");
+        }
+    }
+
+    /**
+     * 私有工具：按售前sessionId查找Netty通道
+     */
+    private Channel findPreSaleChannelBySessionId(String sessionId) {
+        Map<String, Channel> channelMap = PreSaleNettyWebSocketServerHandler.PRE_SALE_RECEIVER_CHANNEL_MAP;
+        if (CollectionUtils.isEmpty(channelMap)) {
+            return null;
+        }
+        for (Channel channel : channelMap.values()) {
+            String bindSessionId = channel.attr(NettyConstant.PRE_SALE_SESSION_ID_KEY).get();
+            if (sessionId.equals(bindSessionId)) {
+                return channel;
+            }
+        }
+        return null;
+    }
+
 
     @Override
     public String generatePreSaleSessionId() {
