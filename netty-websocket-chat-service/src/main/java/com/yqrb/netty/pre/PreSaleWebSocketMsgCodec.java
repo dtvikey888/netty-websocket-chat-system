@@ -2,7 +2,6 @@ package com.yqrb.netty.pre;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONException;
-import com.yqrb.netty.constant.NettyConstant;
 import com.yqrb.pojo.vo.PreSaleChatMessageVO;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
