@@ -20,6 +20,20 @@ public class ChatMessageController {
     @Resource
     private ChatMessageService chatMessageService;
 
+
+
+    // ========== 修改点：新增receiverId参数 ==========
+    @GetMapping("/ws/reconnect")
+    @ApiOperation("WebSocket重连-推送该会话未读消息")
+    public Result<Void> wsReconnect(
+            @RequestParam String sessionId,
+            @RequestParam String receiverId // 新增：接收方ID，必传
+    ) {
+        // 调用修改后的Service方法，传入两个参数
+        return chatMessageService.wsReconnectPushUnread(sessionId, receiverId);
+    }
+
+
     /**
      * 通过 Redis 缓存未读消息数量，减少高并发场景下（大量用户）的数据库查询压力，这个方案非常合理，既能提升响应性能，又能有效降低数据库的负载。
      * @param webSocketMsg

@@ -9,6 +9,14 @@ import java.util.List;
 
 public interface ChatMessageMapperCustom {
 
+
+    // ========== 新增：按sessionId+receiverId查询未读消息（is_read=0） ==========
+    // ========== 修改点：方法名+参数新增receiverId ==========
+    List<ChatMessageVO> listUnreadBySessionIdAndReceiverId(
+            @Param("sessionId") String sessionId,
+            @Param("receiverId") String receiverId
+    );
+
     // 保存聊天消息
     @Insert("INSERT INTO chat_message (msg_id, sender_id, sender_type, receiver_id, content, " +
             "msg_type, session_id, send_time, is_read, create_time) " +

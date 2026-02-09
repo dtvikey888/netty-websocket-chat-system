@@ -19,51 +19,53 @@ public class Result<T> {
     // 响应业务数据
     private T data;
 
-    // ===== 核心：判断是否成功（增加null安全判断，避免NPE）=====
+    // ===== 核心：判断是否成功（null安全+正确的数值比较）=====
     public boolean isSuccess() {
-        return this.code != null && this.code == 200;
+        // 1. 先判空避免NPE  2. 用equals()比较Integer数值（而非==比较引用）
+        return this.code != null && this.code.equals(ResultCode.SUCCESS);
     }
 
     // ===================== 基础成功响应 =====================
     // 成功：无数据、默认消息
     public static <T> Result<T> success() {
-        return new Result<>(200, "操作成功", null);
+        return new Result<>(ResultCode.SUCCESS, ResultCode.SUCCESS_MSG, null);
     }
 
     // 成功：有数据、默认消息
     public static <T> Result<T> success(T data) {
-        return new Result<>(200, "操作成功", data);
+        return new Result<>(ResultCode.SUCCESS, ResultCode.SUCCESS_MSG, data);
     }
 
     // 成功：有数据、自定义成功消息（更友好，如“查询成功”“新增成功”）
     public static <T> Result<T> success(T data, String msg) {
-        return new Result<>(200, msg, null == data ? null : data);
+        // 简化冗余的三元表达式 → 直接使用data
+        return new Result<>(ResultCode.SUCCESS, msg, data);
     }
 
     // ===================== 基础失败响应 =====================
     // 失败：500系统异常、自定义消息
     public static <T> Result<T> error(String msg) {
-        return new Result<>(500, msg, null);
+        return new Result<>(ResultCode.SERVER_ERROR, msg == null ? ResultCode.SERVER_ERROR_MSG : msg, null);
     }
 
     // 未授权：401（token无效/过期、ReceiverId无效等）
     public static <T> Result<T> unauthorized(String msg) {
-        return new Result<>(401, msg, null);
+        return new Result<>(ResultCode.UNAUTHORIZED, msg, null);
     }
 
     // 参数错误：400（入参为空、格式错误、校验失败等）
     public static <T> Result<T> paramError(String msg) {
-        return new Result<>(400, msg, null);
+        return new Result<>(ResultCode.PARAM_ERROR, msg, null);
     }
 
     // 资源不存在：404（查询的对象/数据不存在，高频业务场景）
     public static <T> Result<T> notFound(String msg) {
-        return new Result<>(404, msg, null);
+        return new Result<>(ResultCode.NOT_FOUND, msg, null);
     }
 
     // 权限禁止：403（已授权，但无操作该资源的权限）
     public static <T> Result<T> forbidden(String msg) {
-        return new Result<>(403, msg, null);
+        return new Result<>(ResultCode.FORBIDDEN, msg, null);
     }
 
     // ===================== 自定义响应（适配特殊业务）=====================

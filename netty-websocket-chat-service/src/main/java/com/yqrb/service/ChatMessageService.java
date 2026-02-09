@@ -7,6 +7,10 @@ import com.yqrb.pojo.vo.WebSocketMsgVO;
 import java.util.List;
 
 public interface ChatMessageService {
+
+    // ========== 修改点：新增receiverId参数 ==========
+    Result<Void> wsReconnectPushUnread(String sessionId, String receiverId);
+
     // 发送聊天消息（保存到数据库）
     Result<ChatMessageVO> sendMessage(WebSocketMsgVO webSocketMsg, String receiverId);
 

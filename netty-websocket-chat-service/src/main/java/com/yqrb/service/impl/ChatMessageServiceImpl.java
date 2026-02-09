@@ -1,25 +1,34 @@
 package com.yqrb.service.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 import com.yqrb.mapper.ChatMessageMapperCustom;
+import com.yqrb.netty.NettyWebSocketServerHandler;
+import com.yqrb.netty.NettyWebSocketUtil;
+import com.yqrb.netty.constant.NettyConstant;
 import com.yqrb.pojo.vo.ChatMessageVO;
 import com.yqrb.pojo.vo.Result;
+import com.yqrb.pojo.vo.ResultCode;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
 import com.yqrb.service.ChatMessageService;
 import com.yqrb.service.ReceiverIdService;
 import com.yqrb.service.cache.RedisUnreadMsgCacheService;
 import com.yqrb.util.DateUtil;
 import com.yqrb.util.UUIDUtil;
+import io.netty.channel.Channel;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ChatMessageServiceImpl implements ChatMessageService {
@@ -35,6 +44,78 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     // 统一注入：仅保留 RedisUnreadMsgCacheService（移除冗余的 UnreadMsgCacheService 引用）
     @Resource
     private RedisUnreadMsgCacheService redisUnreadMsgCacheService;
+
+    // ========== 修改点：方法参数新增receiverId，核心逻辑适配 ==========
+    @Override
+    public Result<Void> wsReconnectPushUnread(String sessionId, String receiverId) {
+        // 1. 参数校验：sessionId + receiverId 均非空
+        if (!StringUtils.hasText(sessionId)) {
+            return Result.paramError("sessionId不能为空");
+        }
+        if (!StringUtils.hasText(receiverId)) { // 新增：校验receiverId
+            return Result.paramError("receiverId不能为空");
+        }
+
+        try {
+            // 2. 按sessionId + receiverId 查询未读消息（核心修正）
+            List<ChatMessageVO> unreadMsgPOList = chatMessageMapperCustom.listUnreadBySessionIdAndReceiverId(sessionId, receiverId);
+            if (CollectionUtils.isEmpty(unreadMsgPOList)) {
+                // 修正点1：用custom方法返回Void类型+自定义msg，避免泛型冲突
+                return Result.custom(ResultCode.SUCCESS, "重连成功，当前会话无未读消息");
+            }
+
+            // 3. 查找通道：也可通过receiverId直接找（更高效，替代原有遍历）
+            Channel targetChannel = NettyWebSocketServerHandler.RECEIVER_CHANNEL_MAP.get(receiverId);
+            // 兜底：如果receiverId找不到，再用sessionId遍历（兼容原有逻辑）
+            if (targetChannel == null) {
+                targetChannel = findChannelBySessionId(sessionId);
+            }
+            if (targetChannel == null || !targetChannel.isActive() || !targetChannel.isWritable()) {
+                // 修正点2：error方法返回Void类型，msg自定义，无数据
+                return Result.error("重连成功，但会话通道未在线，未读消息将在通道上线后自动推送");
+            }
+
+            // 4. 批量推送（逻辑不变，格式兼容）
+            for (ChatMessageVO po : unreadMsgPOList) {
+                WebSocketMsgVO wsMsg = new WebSocketMsgVO();
+                wsMsg.setSessionId(po.getSessionId());
+                wsMsg.setReceiverId(po.getReceiverId()); // 确保是当前接收方
+                wsMsg.setUserId(po.getSenderId());
+                wsMsg.setMsgContent(po.getContent());
+                wsMsg.setMsgType(po.getMsgType());
+                wsMsg.setSendTime(po.getSendTime());
+                wsMsg.setSenderType(po.getSenderType());
+
+                targetChannel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(wsMsg)));
+            }
+
+            log.info("【WebSocket重连】sessionId：{}，receiverId：{}，成功推送{}条未读消息",
+                    sessionId, receiverId, unreadMsgPOList.size());
+            // 修正点3：用custom方法返回Void类型+自定义成功msg
+            return Result.custom(ResultCode.SUCCESS, "重连成功，已推送" + unreadMsgPOList.size() + "条未读消息");
+
+        } catch (Exception e) {
+            log.error("【WebSocket重连异常】sessionId：{}，receiverId：{}，异常信息：{}",
+                    sessionId, receiverId, e.getMessage(), e);
+            return Result.error("重连推送未读消息异常，请稍后重试");
+        }
+    }
+
+    // 原有工具方法保留（兜底用）
+    private Channel findChannelBySessionId(String sessionId) {
+        Map<String, Channel> channelMap = NettyWebSocketServerHandler.RECEIVER_CHANNEL_MAP;
+        if (CollectionUtils.isEmpty(channelMap)) {
+            return null;
+        }
+        for (Channel channel : channelMap.values()) {
+            String bindSessionId = channel.attr(NettyConstant.SESSION_ID_KEY).get();
+            if (sessionId.equals(bindSessionId)) {
+                return channel;
+            }
+        }
+        return null;
+    }
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)

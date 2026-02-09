@@ -11,11 +11,22 @@
         <result column="receiver_id" property="receiverId"/>
         <result column="content" property="content"/>
         <result column="msg_type" property="msgType"/>
+        <result column="attachment_path" property="attachmentPath"/>
         <result column="session_id" property="sessionId"/>
         <result column="send_time" property="sendTime"/>
         <result column="is_read" property="isRead"/>
         <result column="create_time" property="createTime"/>
     </resultMap>
+
+    <!-- ========== 修改点：SQL新增receiver_id条件 ========== -->
+    <select id="listUnreadBySessionIdAndReceiverId" resultMap="ChatMessageResultMap">
+        SELECT * FROM chat_message
+        WHERE
+        session_id = #{sessionId}
+        AND receiver_id = #{receiverId} <!-- 核心：限定接收方 -->
+        AND is_read = 0
+        ORDER BY send_time ASC
+    </select>
 
     <!-- 更新消息已读状态 -->
     <update id="updateMsgReadStatus">
@@ -103,4 +114,7 @@
         WHERE receiver_id = #{receiverId}
           AND is_read = 0
     </select>
+
+
+
 </mapper>
