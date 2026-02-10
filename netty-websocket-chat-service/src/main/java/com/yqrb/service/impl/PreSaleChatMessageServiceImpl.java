@@ -462,7 +462,6 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
             return Result.error("删除售前会话消息异常：" + e.getMessage());
         }
     }
-
     @Override
     public Result<Void> cleanExpiredPreSaleChatMessage() {
         try {
