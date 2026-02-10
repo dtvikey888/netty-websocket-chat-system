@@ -413,9 +413,7 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
                     : receiverId;
 
             // 3. 优先查Redis，兜底查DB
-            long unreadTotal = preSaleRedisUnreadMsgCacheService.getUnreadMsgCount(realReceiverId, () -> {
-                return preSaleChatMessageMapper.countTotalUnreadMsgByReceiverId(realReceiverId);
-            });
+            long unreadTotal = preSaleRedisUnreadMsgCacheService.getUnreadMsgCount(realReceiverId, () -> preSaleChatMessageMapper.countTotalUnreadMsgByReceiverId(realReceiverId));
 
             logger.info("【售前未读总数查询】接收者：{}，未读总数：{}", receiverId, unreadTotal);
             return Result.success(unreadTotal);
