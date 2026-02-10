@@ -84,6 +84,7 @@ public class RedisUnreadMsgCacheService {
             return 0L;
         }
     }
+
     /**
      * 查询未读消息数（先查缓存，再查 DB 兜底，符合最终一致性）
      * @param receiverId 接收者 ID
