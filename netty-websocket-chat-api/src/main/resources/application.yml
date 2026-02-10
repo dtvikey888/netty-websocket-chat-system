@@ -50,7 +50,7 @@ spring:
 #
 ####################################################
 mybatis:
-  type-aliases-package: com.imooc.pojo    # 所有 POJO 类所在包路径
+  type-aliases-package: com.yqrb.pojo    # 所有 POJO 类所在包路径
   mapper-locations: classpath:mapper/*.xml  # mapper映射文件
 #  configuration:
 #    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
@@ -96,8 +96,8 @@ custom:
       idle-timeout: 600
       so-backlog: 512  # 2核4G适配，降低连接队列，避免占用内存
       so-keepalive: true  # 保留TCP保活，配合应用层心跳
-  # 售前Netty配置（与售后完全隔离）
-  preSale:
+  # 售前Netty配置（修复：统一为pre-sale，和代码读取key对齐）
+  pre-sale:
     websocket:
       port: 8089
       boss-thread-count: 1  # 不变

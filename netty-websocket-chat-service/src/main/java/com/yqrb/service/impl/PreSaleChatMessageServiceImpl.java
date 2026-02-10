@@ -15,6 +15,7 @@ import com.yqrb.pojo.vo.Result;
 import com.yqrb.pojo.vo.ResultCode;
 import com.yqrb.service.PreSaleChatMessageService;
 import com.yqrb.service.ReceiverIdService;
+import com.yqrb.service.cache.PreSaleRedisUnreadMsgCacheService;
 import com.yqrb.service.cache.RedisUnreadMsgCacheService;
 import com.yqrb.util.UUIDUtil;
 import io.netty.channel.Channel;
@@ -54,7 +55,8 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
 
     // 新增：注入Redis未读消息缓存服务
     @Resource
-    private RedisUnreadMsgCacheService redisUnreadMsgCacheService;
+    private PreSaleRedisUnreadMsgCacheService preSaleRedisUnreadMsgCacheService;
+
 
     @Override
     public Result<Void> wsReconnectPushUnread(String sessionId, String receiverId) {
@@ -228,7 +230,7 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
 
             // 7. 入库成功后更新Redis未读消息数（原子操作，高并发安全）
             if (StringUtils.hasText(vo.getReceiverId())) {
-                redisUnreadMsgCacheService.incrUnreadMsgCount(vo.getReceiverId());
+                preSaleRedisUnreadMsgCacheService.incrUnreadMsgCount(vo.getReceiverId());
             }
 
             logger.info("【售前消息保存成功】msgId：{}，会话ID：{}，接收者：{}",
@@ -379,7 +381,7 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
             }
 
             // 5. 更新Redis未读消息数（递减）
-            redisUnreadMsgCacheService.decrUnreadMsgCount(realReceiverId, unreadCount);
+            preSaleRedisUnreadMsgCacheService.decrUnreadMsgCount(realReceiverId, unreadCount);
 
             logger.info("【售前批量标记已读成功】会话ID：{}，接收者：{}，标记{}条消息为已读",
                     sessionId, receiverId, updateResult);
@@ -411,7 +413,7 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
                     : receiverId;
 
             // 3. 优先查Redis，兜底查DB
-            long unreadTotal = redisUnreadMsgCacheService.getUnreadMsgCount(realReceiverId, () -> {
+            long unreadTotal = preSaleRedisUnreadMsgCacheService.getUnreadMsgCount(realReceiverId, () -> {
                 return preSaleChatMessageMapper.countTotalUnreadMsgByReceiverId(realReceiverId);
             });
 

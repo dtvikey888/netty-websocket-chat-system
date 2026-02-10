@@ -31,8 +31,7 @@
     <!-- 更新消息已读状态 -->
     <update id="updateMsgReadStatus">
         UPDATE chat_message
-        SET is_read = 1,
-            update_time = NOW()
+        SET is_read = 1
         WHERE msg_id = #{msgId}
     </update>
 

@@ -89,8 +89,7 @@
     <!-- 【新增】批量更新会话下未读消息为已读 -->
     <update id="batchUpdateMsgReadStatusBySessionId">
         UPDATE pre_sale_chat_message
-        SET is_read = 1,
-            update_time = NOW()
+        SET is_read = 1
         WHERE pre_sale_session_id = #{sessionId}
           AND receiver_id = #{receiverId}
           AND is_read = 0

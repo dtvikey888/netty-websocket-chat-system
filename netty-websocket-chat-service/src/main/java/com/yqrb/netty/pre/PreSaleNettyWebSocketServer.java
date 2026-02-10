@@ -4,8 +4,10 @@ import com.alibaba.fastjson.JSON;
 import com.yqrb.netty.constant.NettyConstant;
 import com.yqrb.pojo.po.PreSaleChatMessagePO;
 import com.yqrb.pojo.vo.PreSaleChatMessageVO;
+import com.yqrb.pojo.vo.PreSaleWebSocketMsgVO;
 import com.yqrb.pojo.vo.Result;
 import com.yqrb.service.PreSaleChatMessageService;
+import com.yqrb.service.ReceiverIdService;
 import com.yqrb.util.SpringContextUtil;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -30,36 +32,27 @@ import javax.annotation.PreDestroy;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-/**
- * 售前Netty WebSocket服务（完全独立，端口8089）
- * 优化：对齐售后的未读消息推送逻辑，处理ReceiverId前缀
- */
 @Component
 public class PreSaleNettyWebSocketServer {
     private static final Logger log = LoggerFactory.getLogger(PreSaleNettyWebSocketServer.class);
 
-    // 售前Netty配置（从application.yml读取，独立配置）
+    // 修复：配置key和application.yml对齐
     @Value("${custom.netty.pre-sale.websocket.port:8089}")
     private int port;
     @Value("${custom.netty.pre-sale.websocket.boss-thread-count:1}")
     private int bossThreadCount;
-    @Value("${custom.netty.pre-sale.websocket.worker-thread-count:0}")
+    @Value("${custom.netty.pre-sale.websocket.worker-thread-count:8}")
     private int workerThreadCount;
-    @Value("${custom.netty.pre-sale.websocket.idle-timeout:600}")
+    @Value("${custom.netty.pre-sale.websocket.idle-timeout:300}")
     private int idleTimeout;
 
-    // 售前WebSocket基础路径（独立，与售后区分）
     private static final String PRE_SALE_WS_BASE_PATH = "/pre-sale/websocket";
-    // 通道属性-捕获前端URI
     public static final AttributeKey<String> CLIENT_WEBSOCKET_URI = AttributeKey.valueOf("PRE_SALE_CLIENT_WEBSOCKET_URI");
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private ChannelFuture serverFuture;
 
-    /**
-     * 项目启动时初始化Netty服务（@PostConstruct）
-     */
     @PostConstruct
     public void start() {
         new Thread(() -> {
@@ -84,7 +77,7 @@ public class PreSaleNettyWebSocketServer {
                                 pipeline.addLast(new ChunkedWriteHandler());
                                 pipeline.addLast(new HttpObjectAggregator(64 * 1024 * 1024));
 
-                                // 2. 捕获前端WebSocket URI（协议升级前）
+                                // 2. 捕获前端WebSocket URI
                                 pipeline.addLast(new ChannelInboundHandlerAdapter() {
                                     @Override
                                     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
@@ -106,7 +99,7 @@ public class PreSaleNettyWebSocketServer {
                                 // 3. 心跳检测
                                 pipeline.addLast(new IdleStateHandler(idleTimeout, 0, 0, TimeUnit.SECONDS));
 
-                                // 4. WebSocket协议升级（售前独立路径）
+                                // 4. WebSocket协议升级
                                 WebSocketServerProtocolHandler wsProtocolHandler = new WebSocketServerProtocolHandler(
                                         PRE_SALE_WS_BASE_PATH,
                                         null,
@@ -117,7 +110,7 @@ public class PreSaleNettyWebSocketServer {
                                 );
                                 pipeline.addLast("preSaleWebSocketProtocolHandler", wsProtocolHandler);
 
-                                // 5. 握手完成事件监听（售前独立业务绑定）
+                                // 5. 握手完成事件监听（仅保留未读消息推送）
                                 pipeline.addLast(new ChannelInboundHandlerAdapter() {
                                     @Override
                                     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
@@ -126,19 +119,18 @@ public class PreSaleNettyWebSocketServer {
                                             Channel channel = ctx.channel();
                                             String uri = channel.attr(CLIENT_WEBSOCKET_URI).get();
 
-                                            // 解析售前ReceiverId（用户/客服ID）
                                             if (uri != null && uri.startsWith(PRE_SALE_WS_BASE_PATH + "/")) {
                                                 String receiverId = uri.substring((PRE_SALE_WS_BASE_PATH + "/").length());
                                                 receiverId = receiverId.contains("?") ? receiverId.split("\\?")[0] : receiverId;
 
-                                                // 校验ReceiverId格式（售前专属：LYQY_USER_/LYQY_CS_）
+                                                // 校验ReceiverId格式（LYQY_USER_/LYQY_CS_）
                                                 if (!receiverId.startsWith("LYQY_USER_") && !receiverId.startsWith("LYQY_CS_")) {
                                                     log.error("【售前-会话注册失败】通道ID：{}，ReceiverId格式错误：{}", channelId, receiverId);
                                                     ctx.channel().close();
                                                     return;
                                                 }
 
-                                                // 解析售前会话ID（PRE_SESSION_xxx）
+                                                // 解析售前会话ID（preSaleSessionId）
                                                 String preSaleSessionId = parsePreSaleSessionIdFromUri(uri);
                                                 if (preSaleSessionId == null || !preSaleSessionId.startsWith("PRE_SESSION_")) {
                                                     log.error("【售前-会话注册失败】通道ID：{}，未传入合法售前会话ID", channelId);
@@ -146,23 +138,58 @@ public class PreSaleNettyWebSocketServer {
                                                     return;
                                                 }
 
-                                                // 区分发送者类型
+                                                // 区分发送者类型（USER/CS）
                                                 String senderType = receiverId.startsWith("LYQY_USER_")
                                                         ? PreSaleChatMessageVO.SENDER_TYPE_USER
                                                         : PreSaleChatMessageVO.SENDER_TYPE_CS;
 
-                                                // 绑定售前专属常量到通道（核心隔离）
+                                                // 绑定通道属性（核心：会话ID、接收者ID、发送者类型）
                                                 channel.attr(NettyConstant.PRE_SALE_RECEIVER_ID_KEY).set(receiverId);
                                                 channel.attr(NettyConstant.PRE_SALE_SESSION_ID_KEY).set(preSaleSessionId);
                                                 channel.attr(NettyConstant.PRE_SALE_SENDER_TYPE_KEY).set(senderType);
-                                                // 注册到售前独立通道映射
                                                 PreSaleNettyWebSocketServerHandler.PRE_SALE_RECEIVER_CHANNEL_MAP.put(receiverId, channel);
 
                                                 log.info("【售前-会话注册成功】通道ID：{}，ReceiverId：{}，类型：{}，会话ID：{}",
                                                         channelId, receiverId, senderType, preSaleSessionId);
 
-                                                // 推送售前未读消息（优化：处理ReceiverId前缀，和售后对齐）
-                                                pushUnreadPreSaleMessage(channel, receiverId, preSaleSessionId);
+                                                // ====================== 仅保留：推送pre_sale_chat_message未读消息 ======================
+                                                try {
+                                                    PreSaleChatMessageService preSaleChatMessageService = SpringContextUtil.getBean(PreSaleChatMessageService.class);
+                                                    ReceiverIdService receiverIdService = SpringContextUtil.getBean(ReceiverIdService.class);
+
+                                                    // 处理ReceiverId前缀（R_FIXED_0000_）
+                                                    String authReceiverId = "R_FIXED_0000_" + receiverId;
+                                                    // 校验ReceiverId有效性
+                                                    if (!receiverIdService.validateReceiverId(authReceiverId)) {
+                                                        log.warn("【售前-未读消息推送】ReceiverId无效：{}", authReceiverId);
+                                                    }
+
+                                                    // 调用服务查询未读消息
+                                                    Result<List<PreSaleChatMessagePO>> unreadResult = preSaleChatMessageService.listUnreadBySessionAndReceiver(preSaleSessionId, authReceiverId);
+                                                    if (unreadResult != null && unreadResult.isSuccess() && !CollectionUtils.isEmpty(unreadResult.getData())) {
+                                                        List<PreSaleChatMessagePO> unreadList = unreadResult.getData();
+                                                        log.info("【售前-未读消息推送】ReceiverId：{}，找到{}条未读消息", receiverId, unreadList.size());
+
+                                                        // 封装为WebSocket消息推送（携带preSaleSessionId）
+                                                        for (PreSaleChatMessagePO msg : unreadList) {
+                                                            PreSaleWebSocketMsgVO wsMsg = new PreSaleWebSocketMsgVO();
+                                                            wsMsg.setSessionId(msg.getPreSaleSessionId()); // 关键：传递会话ID
+                                                            wsMsg.setReceiverId(msg.getReceiverId());
+                                                            wsMsg.setUserId(msg.getSenderId());
+                                                            wsMsg.setMsgContent(msg.getContent());
+                                                            wsMsg.setMsgType(msg.getMsgType());
+                                                            wsMsg.setSendTime(msg.getSendTime());
+                                                            wsMsg.setSenderType(msg.getSenderType());
+
+                                                            channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(wsMsg)));
+                                                        }
+                                                        log.info("【售前-未读消息推送完成】ReceiverId：{}，推送{}条", receiverId, unreadList.size());
+                                                    } else {
+                                                        log.info("【售前-未读消息查询】ReceiverId：{}，无未读消息", receiverId);
+                                                    }
+                                                } catch (Exception e) {
+                                                    log.error("【售前-未读消息推送异常】ReceiverId：{}，异常：{}", receiverId, e.getMessage(), e);
+                                                }
 
                                                 // 清理HTTP处理器
                                                 cleanHttpHandlers(ctx, channelId);
@@ -186,7 +213,6 @@ public class PreSaleNettyWebSocketServer {
                             }
                         });
 
-                // 绑定售前独立端口8089
                 serverFuture = bootstrap.bind(port).sync();
                 log.info("=====================================");
                 log.info("售前Netty WebSocket服务启动成功");
@@ -205,9 +231,7 @@ public class PreSaleNettyWebSocketServer {
         }, "PreSale-Netty-WebSocket-Server-Thread").start();
     }
 
-    /**
-     * 解析URI中的售前会话ID（preSaleSessionId）
-     */
+    // 解析URI中的preSaleSessionId参数（复用售后的解析逻辑）
     private String parsePreSaleSessionIdFromUri(String uri) {
         if (uri == null || !uri.contains("?preSaleSessionId=")) {
             return null;
@@ -222,26 +246,22 @@ public class PreSaleNettyWebSocketServer {
         return null;
     }
 
-    /**
-     * 推送售前未读消息（优化：处理ReceiverId前缀，和售后对齐）
-     */
+    // 推送未读消息（原有方法，已整合到握手逻辑中）
     private void pushUnreadPreSaleMessage(Channel channel, String receiverId, String preSaleSessionId) {
         try {
             PreSaleChatMessageService preSaleChatMessageService = SpringContextUtil.getBean(PreSaleChatMessageService.class);
+            String realReceiverId = receiverId.startsWith("R_FIXED_0000_")
+                    ? receiverId.substring("R_FIXED_0000_".length())
+                    : receiverId;
 
-            // 注意：如果Service层已处理前缀，这里直接传原始receiverId即可（无需拼接R_FIXED_0000_）
-            // 若权限校验必须用前缀，需确保Service层能正确解析
-            Result<List<PreSaleChatMessagePO>> unreadResult = preSaleChatMessageService.listUnreadBySessionAndReceiver(preSaleSessionId, receiverId);
-
+            Result<List<PreSaleChatMessagePO>> unreadResult = preSaleChatMessageService.listUnreadBySessionAndReceiver(preSaleSessionId, realReceiverId);
             if (unreadResult != null && unreadResult.isSuccess() && !CollectionUtils.isEmpty(unreadResult.getData())) {
                 List<PreSaleChatMessagePO> unreadList = unreadResult.getData();
                 log.info("【售前-未读消息推送】ReceiverId：{}，找到{}条未读消息", receiverId, unreadList.size());
 
-                // SQL已筛选is_read=0，无需再判断
                 for (PreSaleChatMessagePO msg : unreadList) {
                     channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(msg)));
                 }
-
                 log.info("【售前-未读消息推送完成】ReceiverId：{}，推送{}条", receiverId, unreadList.size());
             } else {
                 log.info("【售前-未读消息查询】ReceiverId：{}，无未读消息", receiverId);
@@ -251,9 +271,6 @@ public class PreSaleNettyWebSocketServer {
         }
     }
 
-    /**
-     * 清理HTTP处理器
-     */
     private void cleanHttpHandlers(ChannelHandlerContext ctx, String channelId) {
         try {
             if (ctx.pipeline().get(HttpServerCodec.class) != null) ctx.pipeline().remove(HttpServerCodec.class);
@@ -264,9 +281,6 @@ public class PreSaleNettyWebSocketServer {
         }
     }
 
-    /**
-     * 项目关闭时优雅关闭Netty（@PreDestroy）
-     */
     @PreDestroy
     public void stop() {
         if (serverFuture != null) {

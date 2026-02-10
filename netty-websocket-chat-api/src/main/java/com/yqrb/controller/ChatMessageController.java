@@ -14,7 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/newspaper/chat")
-@Api(tags = "聊天消息接口")
+@Api(tags = "售后聊天消息接口")
 public class ChatMessageController {
 
     @Resource
