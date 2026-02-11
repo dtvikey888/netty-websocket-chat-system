@@ -238,8 +238,8 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
             return Result.success();
 
         } catch (Exception e) {
-            // 捕获唯一索引冲突（幂等处理）
-            if (e.getMessage() != null && e.getMessage().contains("uk_pre_msg_id")) {
+            // 新增：调用工具方法判断是否为唯一索引冲突
+            if (isDuplicateKeyException(e, "uk_pre_msg_id")) {
                 logger.info("【售前消息幂等校验】消息已存在，msgId：{}", vo.getMsgId());
                 return Result.success();
             }
@@ -247,6 +247,34 @@ public class PreSaleChatMessageServiceImpl implements PreSaleChatMessageService 
             return Result.error("保存售前消息异常：" + e.getMessage());
         }
     }
+
+    /**
+     * 工具方法：判断异常是否为指定唯一索引的重复键冲突
+     * @param e 原始异常
+     * @param indexName 唯一索引名（如uk_pre_msg_id）
+     * @return 是否为目标索引的重复冲突
+     */
+    private boolean isDuplicateKeyException(Exception e, String indexName) {
+        // 1. 获取根异常（穿透包装异常，找到最底层的SQL异常）
+        Throwable rootCause = e;
+        while (rootCause.getCause() != null && rootCause != rootCause.getCause()) {
+            rootCause = rootCause.getCause();
+        }
+
+        // 2. 判断是否为MySQL唯一索引冲突异常（SQLIntegrityConstraintViolationException）
+        if (rootCause instanceof java.sql.SQLIntegrityConstraintViolationException) {
+            String errorMsg = rootCause.getMessage().toLowerCase();
+            // 3. 兼容中英文异常消息的核心特征匹配
+            boolean isDuplicateKey = errorMsg.contains("duplicate entry") // 英文特征
+                    || errorMsg.contains("重复条目") // 中文特征
+                    || errorMsg.contains("唯一索引冲突"); // 框架包装后的特征
+            // 4. 匹配目标索引名（兼容带表名的情况，如pre_sale_chat_message.uk_pre_msg_id）
+            boolean isTargetIndex = errorMsg.contains(indexName.toLowerCase());
+            return isDuplicateKey && isTargetIndex;
+        }
+        return false;
+    }
+
 
     @Override
     public Result<List<PreSaleChatMessagePO>> listUnreadBySessionAndReceiver(String sessionId, String receiverId) {

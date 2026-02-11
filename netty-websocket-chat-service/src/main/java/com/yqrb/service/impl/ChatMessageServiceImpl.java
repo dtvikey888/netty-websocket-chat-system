@@ -164,8 +164,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 redisUnreadMsgCacheService.incrUnreadMsgCount(webSocketMsg.getReceiverId());
             }
         } catch (Exception e) {
-            // 捕获唯一索引冲突异常（msg_id 重复）
-            if (e.getMessage().contains("uk_msg_id")) {
+            // ========== 关键修改：调用工具方法判断唯一索引冲突 ==========
+            if (isDuplicateKeyException(e, "uk_msg_id")) {
                 log.info("【消息发送幂等校验】消息已存在，msgId：{}", msgId);
                 ChatMessageVO existMsg = chatMessageMapperCustom.selectByMsgId(msgId);
                 if (existMsg == null) {
@@ -182,6 +182,32 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
         // 6. 返回消息详情
         return Result.success(chatMessage);
+    }
+
+    /**
+     * 工具方法：判断异常是否为指定唯一索引的重复键冲突（适配售后场景）
+     * @param e 原始异常
+     * @param indexName 唯一索引名（如uk_msg_id）
+     * @return 是否为目标索引的重复冲突
+     */
+    private boolean isDuplicateKeyException(Exception e, String indexName) {
+        // 1. 穿透包装异常，获取最底层的根异常（解决Spring/MyBatis包装问题）
+        Throwable rootCause = e;
+        while (rootCause.getCause() != null && rootCause != rootCause.getCause()) {
+            rootCause = rootCause.getCause();
+        }
+
+        // 2. 精准判断MySQL唯一索引冲突异常类型（核心依据）
+        if (rootCause instanceof java.sql.SQLIntegrityConstraintViolationException) {
+            String errorMsg = rootCause.getMessage().toLowerCase();
+            // 3. 兼容中英文异常特征 + 目标索引名匹配
+            boolean isDuplicateKey = errorMsg.contains("duplicate entry") // 英文特征
+                    || errorMsg.contains("重复条目") // 中文特征
+                    || errorMsg.contains("唯一索引冲突"); // 框架包装特征
+            boolean isTargetIndex = errorMsg.contains(indexName.toLowerCase()); // 匹配uk_msg_id
+            return isDuplicateKey && isTargetIndex;
+        }
+        return false;
     }
 
     @Override
