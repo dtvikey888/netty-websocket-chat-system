@@ -66,6 +66,7 @@
             sender_type,
             receiver_id,
             content,
+            attachment_path, <!-- 保留 -->
             msg_type,
             session_id,
             send_time,

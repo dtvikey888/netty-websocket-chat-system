@@ -11,7 +11,8 @@ import java.util.Date;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WebSocketMsgVO {
-    // 消息类型常量 - 新增：新申请提醒
+    // 消息类型常量 - 新增：附件消息类型
+    public static final String MSG_TYPE_ATTACHMENT = "ATTACHMENT"; // 附件消息
     public static final String MSG_TYPE_NEW_APPLICATION = "NEW_APPLICATION_REMIND";
     public static final String MSG_TYPE_TEXT = "TEXT";
     public static final String MSG_TYPE_PAY_REMIND = "PAY_REMIND";
@@ -25,8 +26,11 @@ public class WebSocketMsgVO {
     private String receiverId; // 接收者会话ID（客服/用户的serviceStaffId/userId）
     private String userId; // 发送者用户ID（系统推送时填SYSTEM）
     private String msgContent; // 消息内容
-    private String msgType; // 消息类型
+    private String msgType; // 消息类型（新增 ATTACHMENT 类型）
     private String sessionId; // 会话ID
+
+    // ========== 核心新增：附件路径字段 ==========
+    private String attachmentPath; // 附件路径（多张用逗号分隔）
 
     // 关键优化：指定Date字段的序列化格式，兼容字符串/时间戳解析
     @JSONField(format = "yyyy-MM-dd HH:mm:ss", serialize = true, deserialize = true)

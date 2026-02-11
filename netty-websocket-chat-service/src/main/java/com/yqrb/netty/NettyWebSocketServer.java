@@ -244,6 +244,7 @@ public class NettyWebSocketServer {
                                                         // 4. 遍历封装为WebSocketMsgVO，推送给当前通道
                                                         for (ChatMessageVO unreadMsg : unreadMsgList) {
                                                             WebSocketMsgVO wsMsg = new WebSocketMsgVO();
+                                                            wsMsg.setAttachmentPath(unreadMsg.getAttachmentPath()); // 附件路径（多张用逗号分隔）
                                                             wsMsg.setReceiverId(unreadMsg.getReceiverId()); // 接收方ID（自身）
                                                             wsMsg.setUserId(unreadMsg.getSenderId()); // 发送方ID（消息原发送者）
                                                             wsMsg.setMsgContent(unreadMsg.getContent()); // 消息内容

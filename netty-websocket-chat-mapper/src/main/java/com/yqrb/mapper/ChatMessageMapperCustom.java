@@ -10,6 +10,8 @@ import java.util.List;
 public interface ChatMessageMapperCustom {
 
 
+
+
     // ========== 新增：按sessionId+receiverId查询未读消息（is_read=0） ==========
     // ========== 修改点：方法名+参数新增receiverId ==========
     List<ChatMessageVO> listUnreadBySessionIdAndReceiverId(
@@ -17,18 +19,22 @@ public interface ChatMessageMapperCustom {
             @Param("receiverId") String receiverId
     );
 
-    // 保存聊天消息
+    // 保存聊天消息（补充 attachment_path 字段）
     @Insert("INSERT INTO chat_message (msg_id, sender_id, sender_type, receiver_id, content, " +
-            "msg_type, session_id, send_time, is_read, create_time) " +
+            "attachment_path, msg_type, session_id, send_time, is_read, create_time) " + // 新增 attachment_path
             "VALUES (#{msgId}, #{senderId}, #{senderType}, #{receiverId}, #{content}, " +
-            "#{msgType}, #{sessionId}, #{sendTime}, #{isRead}, #{createTime})")
+            "#{attachmentPath}, #{msgType}, #{sessionId}, #{sendTime}, #{isRead}, #{createTime})") // 绑定 attachmentPath
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insertChatMessage(ChatMessageVO chatMessage);
 
     // 根据会话ID查询消息列表
     // 1. 【修改】无分页查询：重命名方法名，避免与分页方法冲突，同时保留原有功能
     // 原方法名：selectBySessionId → 新方法名：selectAllMessageBySessionId
-    @Select("SELECT * FROM chat_message WHERE session_id = #{sessionId} ORDER BY send_time ASC")
+    // 其他方法不变，以下仅展示需要补充字段的查询方法
+    // ========== 补充：无分页查询新增 attachment_path 字段 ==========
+    @Select("SELECT id, msg_id, sender_id, sender_type, receiver_id, content, attachment_path, " +
+            "msg_type, session_id, send_time, is_read, create_time " +
+            "FROM chat_message WHERE session_id = #{sessionId} ORDER BY send_time ASC")
     List<ChatMessageVO> selectAllMessageBySessionId(String sessionId);
 
     // 分页查询会话消息（去掉分页参数，或保留用于PageHelper）

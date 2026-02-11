@@ -3,6 +3,7 @@ package com.yqrb.netty;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONException;
 import com.yqrb.netty.constant.NettyConstant;
+import com.yqrb.pojo.vo.ChatMessageVO;
 import com.yqrb.pojo.vo.WebSocketMsgVO;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -33,82 +34,77 @@ public class WebSocketMsgCodec extends MessageToMessageCodec<WebSocketFrame, Web
         logger.info("【编解码器】客户端{}发送了帧类型：{}", clientId, frame.getClass().getSimpleName());
 
         try {
-            // 1. 处理文本帧（核心业务帧：JSON + 纯文本）
             if (frame instanceof TextWebSocketFrame) {
                 String msgContent = ((TextWebSocketFrame) frame).text();
                 logger.info("【解码】客户端{}发送文本帧：{}", clientId, msgContent);
 
-                WebSocketMsgVO webSocketMsg = null;
+                WebSocketMsgVO webSocketMsg;
                 try {
-                    // 第一步：尝试按JSON格式解析（兼容原有标准JSON消息）
+                    // 第一步：尝试按JSON格式解析（支持附件字段）
                     webSocketMsg = JSON.parseObject(msgContent, WebSocketMsgVO.class);
                 } catch (JSONException e) {
-                    // 第二步：JSON解析失败，判定为纯文本消息，手动封装WebSocketMsgVO
+                    // 第二步：纯文本消息，支持附件格式扩展
                     logger.info("【解码】客户端{}发送的是纯文本消息，手动封装VO", clientId);
                     webSocketMsg = new WebSocketMsgVO();
 
-                    // ======================================
-                    // 核心升级：解析「接收者ID + 自定义sessionId + 真实消息」格式，兼容旧格式
-                    // 新格式：receiverId:xxx|sessionId:xxx|真实消息
-                    // 旧格式：receiverId:xxx|真实消息（兼容，无sessionId时用通道自身ID兜底）
+                    // 扩展格式：receiverId:xxx|sessionId:xxx|msgType:ATTACHMENT|attachmentPath:xxx,xxx|content:xxx
                     String targetReceiverId = null;
-                    String customSessionId = null; // 解析到的自定义sessionId
-                    String realMsgContent = msgContent; // 最终要展示的真实消息内容
+                    String customSessionId = null;
+                    String realMsgContent = msgContent;
+                    String attachmentPath = null;
+                    String msgType = ChatMessageVO.MSG_TYPE_TEXT; // 默认文本
 
                     if (msgContent.contains("|")) {
-                        // 分割为最多3部分，保留消息内容中的「|」（用户输入不受影响）
-                        String[] msgParts = msgContent.split("\\|", 3);
+                        String[] msgParts = msgContent.split("\\|", 5); // 扩展为5部分，支持附件
 
-                        // 先处理新格式（3部分，包含sessionId）
-                        if (msgParts.length >= 3
+                        // 新格式：receiverId:xxx|sessionId:xxx|msgType:ATTACHMENT|attachmentPath:xxx|content:xxx
+                        if (msgParts.length >= 5
                                 && msgParts[0].startsWith("receiverId:")
-                                && msgParts[1].startsWith("sessionId:")) {
-                            // 提取目标接收者ID
+                                && msgParts[1].startsWith("sessionId:")
+                                && msgParts[2].startsWith("msgType:")
+                                && msgParts[3].startsWith("attachmentPath:")) {
                             targetReceiverId = msgParts[0].substring("receiverId:".length()).trim();
-                            // 提取自定义sessionId（核心：保留全局会话ID）
                             customSessionId = msgParts[1].substring("sessionId:".length()).trim();
-                            // 提取真实消息内容
-                            realMsgContent = msgParts[2].trim();
+                            msgType = msgParts[2].substring("msgType:".length()).trim();
+                            attachmentPath = msgParts[3].substring("attachmentPath:".length()).trim();
+                            realMsgContent = msgParts[4].trim();
                         } else if (msgParts.length >= 2 && msgParts[0].startsWith("receiverId:")) {
-                            // 兼容旧格式（2部分，无sessionId）
+                            // 兼容旧格式
                             targetReceiverId = msgParts[0].substring("receiverId:".length()).trim();
                             realMsgContent = msgParts[1].trim();
                             logger.warn("【解码】客户端{}使用旧格式纯文本，无自定义sessionId，将用通道自身ID兜底", clientId);
                         }
                     }
-                    // ======================================
 
-                    // 从Channel上下文获取发送者自身信息（仅用于兜底）
+                    // 从Channel获取上下文信息
                     String channelSelfId = ctx.channel().attr(NettyConstant.SESSION_ID_KEY).get();
                     String senderType = ctx.channel().attr(NettyConstant.SENDER_TYPE_KEY).get();
                     String userId = ctx.channel().attr(NettyConstant.USER_ID_KEY).get();
 
-                    // 填充纯文本消息完整字段（优先使用解析到的自定义值，无则兜底）
+                    // 填充字段（包含附件路径）
                     webSocketMsg.setMsgContent(realMsgContent);
-                    webSocketMsg.setMsgType(WebSocketMsgVO.MSG_TYPE_TEXT);
+                    webSocketMsg.setMsgType(msgType);
+                    webSocketMsg.setAttachmentPath(attachmentPath); // 赋值附件路径
                     webSocketMsg.setSendTime(new Date());
                     webSocketMsg.setReceiverId(targetReceiverId);
-                    // 关键：sessionId优先用自定义，无则用通道自身ID
                     webSocketMsg.setSessionId(customSessionId != null ? customSessionId : channelSelfId);
                     webSocketMsg.setSenderType(senderType != null ? senderType : WebSocketMsgVO.SENDER_TYPE_USER);
                     webSocketMsg.setUserId(userId != null ? userId : channelSelfId);
                 }
 
-                // 无论JSON还是纯文本，传递给后续业务处理器
                 if (webSocketMsg != null) {
                     out.add(webSocketMsg);
                 }
                 return;
             }
 
-            // 2. 处理二进制帧（扩展用，如文件传输，保留原有逻辑）
+            // 二进制帧处理（可用于直接传输文件字节，可选扩展）
             if (frame instanceof BinaryWebSocketFrame) {
                 ByteBuf byteBuf = ((BinaryWebSocketFrame) frame).content();
-                // 修复：读取前记录readerIndex，读取后重置
                 int readerIndex = byteBuf.readerIndex();
                 byte[] bytes = new byte[byteBuf.readableBytes()];
                 byteBuf.readBytes(bytes);
-                byteBuf.readerIndex(readerIndex); // 重置索引
+                byteBuf.readerIndex(readerIndex);
 
                 String jsonStr = new String(bytes, StandardCharsets.UTF_8);
                 logger.info("【解码】客户端{}发送二进制帧：{}", clientId, jsonStr);
@@ -117,7 +113,7 @@ public class WebSocketMsgCodec extends MessageToMessageCodec<WebSocketFrame, Web
                 return;
             }
 
-            // 3. 处理心跳/关闭帧（非业务帧，避免抛异常，保留原有逻辑）
+            // 心跳/关闭帧处理
             if (frame instanceof PingWebSocketFrame) {
                 logger.info("【解码】客户端{}发送Ping帧，自动回复Pong", clientId);
                 ctx.channel().writeAndFlush(new PongWebSocketFrame(frame.content().retain()));
@@ -135,14 +131,12 @@ public class WebSocketMsgCodec extends MessageToMessageCodec<WebSocketFrame, Web
                 return;
             }
 
-            // 4. 不支持的帧类型（仅打印日志，不抛异常，保留原有逻辑）
             logger.error("【解码】客户端{}发送不支持的帧类型：{}", clientId, frame.getClass().getSimpleName());
 
         } catch (Exception e) {
             logger.error("【解码】客户端{}解码异常：{}", clientId, e.getMessage(), e);
         }
     }
-
     /**
      * 编码：将WebSocketMsgVO转换为WebSocketFrame（保留原有逻辑，无需修改）
      */

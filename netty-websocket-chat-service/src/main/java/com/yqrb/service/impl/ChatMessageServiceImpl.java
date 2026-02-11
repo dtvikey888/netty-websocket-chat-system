@@ -126,8 +126,18 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         // 2. 校验消息参数
-        if (webSocketMsg.getSessionId() == null || webSocketMsg.getMsgContent() == null) {
-            return Result.paramError("会话ID和消息内容不能为空");
+        if (webSocketMsg.getSessionId() == null) {
+            return Result.paramError("会话ID不能为空");
+        }
+        // 附件消息校验：msgType为ATTACHMENT时，attachmentPath不能为空
+        if (ChatMessageVO.MSG_TYPE_ATTACHMENT.equals(webSocketMsg.getMsgType())
+                && !StringUtils.hasText(webSocketMsg.getAttachmentPath())) {
+            return Result.paramError("附件消息的附件路径不能为空");
+        }
+        // 文本消息校验：content不能为空
+        if (ChatMessageVO.MSG_TYPE_TEXT.equals(webSocketMsg.getMsgType())
+                && !StringUtils.hasText(webSocketMsg.getMsgContent())) {
+            return Result.paramError("文本消息内容不能为空");
         }
 
         // 新增：校验并处理发送者类型
@@ -144,7 +154,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         chatMessage.setSenderId(webSocketMsg.getUserId());
         chatMessage.setSenderType(senderType);
         chatMessage.setReceiverId(webSocketMsg.getReceiverId());
-        chatMessage.setContent(webSocketMsg.getMsgContent());
+        chatMessage.setContent(webSocketMsg.getMsgContent()); // 附件消息时为附件说明
+        // ========== 核心新增：赋值附件路径 ==========
+        chatMessage.setAttachmentPath(webSocketMsg.getAttachmentPath());
+        // 消息类型兜底：无则为TEXT，支持ATTACHMENT类型
         chatMessage.setMsgType(webSocketMsg.getMsgType() == null ? ChatMessageVO.MSG_TYPE_TEXT : webSocketMsg.getMsgType());
         chatMessage.setSessionId(webSocketMsg.getSessionId());
         chatMessage.setSendTime(webSocketMsg.getSendTime() == null ? DateUtil.getCurrentDate() : webSocketMsg.getSendTime());
@@ -158,13 +171,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 return Result.error("发送消息失败");
             }
 
-            // ========== 【修改1：调整缓存更新顺序】入库成功后，再更新Redis缓存 ==========
             // 最后：Redis 未读消息数 +1（原子操作，高并发安全）
             if (StringUtils.hasText(webSocketMsg.getReceiverId())) {
                 redisUnreadMsgCacheService.incrUnreadMsgCount(webSocketMsg.getReceiverId());
             }
         } catch (Exception e) {
-            // ========== 关键修改：调用工具方法判断唯一索引冲突 ==========
             if (isDuplicateKeyException(e, "uk_msg_id")) {
                 log.info("【消息发送幂等校验】消息已存在，msgId：{}", msgId);
                 ChatMessageVO existMsg = chatMessageMapperCustom.selectByMsgId(msgId);
@@ -174,7 +185,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 }
                 return Result.success(existMsg);
             }
-            throw e; // 其他异常正常抛出，触发事务回滚
+            throw e;
         }
 
         // 5. 刷新ReceiverId过期时间
